@@ -1,0 +1,22 @@
+requires = ["tox>=4"]
+env_list = ["lint", "type", "3.14", "3.13", "3.12"]
+
+[env_run_base]
+description = "run tests"
+deps = [
+    "pytest>=8",
+    "hypothesis>=6",
+    "pytest-sugar"
+]
+commands = [["pytest", { replace = "posargs", default = ["tests"], extend = true }]]
+
+[env.lint]
+description = "run ruff"
+skip_install = true
+deps = ["ruff"]
+commands = [["ruff", { replace = "posargs", default = ["check"], extend = true} ]]
+
+[env.type]
+description = "run pyright"
+deps = ["pyright"]
+commands = [["pyright", { replace = "posargs", default = ["src"], extend = true} ]]

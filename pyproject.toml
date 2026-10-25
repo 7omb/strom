@@ -1,0 +1,25 @@
+[project]
+name = "pipes"
+version = "0.1.0"
+description = "Type-safe pipelines for Python"
+license = {text = "MIT License"}
+readme = "README.md"
+authors = [
+    { name = "Tom Bärwinkel", email = "dev@baerwinkel.org" }
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[dependency-groups]
+dev = []
+
+[tool.ruff]
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["ANN", "B", "D", "E", "F", "I", "PLE", "S", "UP"]
+ignore = ["D100", "D104"]
