@@ -1,5 +1,5 @@
 {
-  description = "prerequisites for pipes";
+  description = "prerequisites for strom";
 
   inputs = {
     nixpkgs.url = "github:nixos/nixpkgs?ref=nixos-unstable";
@@ -15,8 +15,7 @@
         pythonEnv = pkgs.python314;
         pythonVersions = with pkgs; [
           pythonEnv
-          python313
-          python312
+          python314FreeThreading
         ];
 
         jail = jail-nix.lib.init pkgs;
@@ -25,16 +24,29 @@
           bashInteractive
           curl
           git
+          gnumake
           gnused
+          gawk
+          gnutar
+          gzip
+          diffutils
           ripgrep
           jq
           findutils
-          jetbrains.jdk
-          kotlin
-          ktfmt
-          detekt
-          deno
           pre-commit
+          uv
+          ruff
+          pyright
+          ty
+          nixpkgs-fmt
+          which
+          sqlite
+          pythonEnv
+          # The free-threaded build only as python3.14t:
+          (pkgs.runCommand "python3.14t" { } ''
+            mkdir -p $out/bin
+            ln -s ${pkgs.python314FreeThreading}/bin/python3.14t $out/bin/
+          '')
         ];
         jailed-claude = jail "jailed-claude" claude-pkg (with jail.combinators; [
           network
@@ -52,6 +64,9 @@
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             pyright
+            ruff
+            ty
+            nixpkgs-fmt
             uv
             direnv
             nix-direnv
@@ -60,37 +75,13 @@
             gnumake
             jailed-claude
           ] ++ pythonVersions;
-          # Use nix-ld when on NixOS, because ruff depends on libc:
-          NIX_LD_LIBRARY_PATH = with pkgs; lib.makeLibraryPath [
-            stdenv.cc.cc
-          ];
           # Let uv use the python version of this flake by default:
           UV_PYTHON = pythonEnv.interpreter;
-        };
-
-        apps.tox = flake-utils.lib.mkApp {
-          drv = pkgs.writeShellApplication {
-            name = "run-tox";
-            runtimeInputs = with pkgs; [
-              uv
-            ] ++ pythonVersions;
-            text = ''
-              uv run tox
-            '';
-          };
-        };
-
-        apps.build = flake-utils.lib.mkApp {
-          drv = pkgs.writeShellApplication {
-            name = "build";
-            runtimeInputs = with pkgs; [
-              uv
-              pythonEnv
-            ];
-            text = ''
-              uv build
-            '';
-          };
+          # Each Python's setup hook exports its own sysconfigdata name; the last one (3.14t)
+          # wins and breaks 3.14. Native interpreters find their own without these variables:
+          shellHook = ''
+            unset _PYTHON_SYSCONFIGDATA_NAME _PYTHON_HOST_PLATFORM
+          '';
         };
 
         formatter = pkgs.nixpkgs-fmt;

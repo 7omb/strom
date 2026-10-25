@@ -1,22 +1,36 @@
-requires = ["tox>=4"]
-env_list = ["lint", "type", "3.14", "3.13", "3.12"]
+requires = ["tox>=4.22"]
+env_list = ["lint", "type", "3.14", "3.14t", "bench", "examples"]
 
+# The checks are defined once, in the Makefile: every env runs a make target. The envs of a Python version and
+# bench run it on their own interpreter, against the installed package (`RUN=`: without `uv run`); the others run
+# it as it is, in the project's venv. Arguments after `--` reach pytest (`tox -e 3.14t -- -n 0`: serial) or
+# `bin/run_examples.py` as `ARGS`.
 [env_run_base]
-description = "run tests"
-deps = [
-    "pytest>=8",
-    "hypothesis>=6",
-    "pytest-sugar"
-]
-commands = [["pytest", { replace = "posargs", default = ["tests"], extend = true }]]
+description = "make test on this env's Python"
+dependency_groups = ["dev"]
+allowlist_externals = ["make"]
+commands = [["make", "test", "RUN=", "ARGS={posargs}"]]
 
 [env.lint]
-description = "run ruff"
+description = "make lint"
 skip_install = true
-deps = ["ruff"]
-commands = [["ruff", { replace = "posargs", default = ["check"], extend = true} ]]
+dependency_groups = []
+commands = [["make", "lint"]]
 
 [env.type]
-description = "run pyright"
-deps = ["pyright"]
-commands = [["pyright", { replace = "posargs", default = ["src"], extend = true} ]]
+description = "make type"
+skip_install = true
+dependency_groups = []
+commands = [["make", "type"]]
+
+[env.bench]
+description = "make bench-results: each benchmark once, its results checked (no timing)"
+dependency_groups = ["dev", "bench"]
+set_env = { BENCH_SCALE = { replace = "env", name = "BENCH_SCALE", default = "0.2" } }
+commands = [["make", "bench-results", "RUN=", "ARGS={posargs}"]]
+
+[env.examples]
+description = "make examples"
+skip_install = true
+dependency_groups = []
+commands = [["make", "examples", "ARGS={posargs}"]]

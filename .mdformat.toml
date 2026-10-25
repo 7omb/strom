@@ -1,0 +1,7 @@
+# mdformat (pre-commit hook): fill paragraphs to 120 characters (ruff's line-length; bin/check_docs.py fails on longer
+# lines), number ordered lists, no padding in table cells.
+wrap = 120
+number = true
+
+[plugin.tables]
+compact_tables = true

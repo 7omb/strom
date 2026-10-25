@@ -1,25 +1,151 @@
 [project]
-name = "pipes"
+name = "strom"
 version = "0.1.0"
-description = "Type-safe pipelines for Python"
-license = {text = "MIT License"}
+description = "Typed, declarative stream processing on asyncio with shared worker pools"
+license = "MIT"
+license-files = ["LICENSE"]
 readme = "README.md"
 authors = [
     { name = "Tom Bärwinkel", email = "dev@baerwinkel.org" }
 ]
-requires-python = ">=3.12"
+requires-python = ">=3.14"
 dependencies = []
+keywords = ["pipeline", "stream processing", "asyncio", "concurrency", "dataflow", "arrows", "typed"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Framework :: AsyncIO",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: Free Threading :: 3 - Stable",
+    "Topic :: Software Development :: Libraries",
+    "Typing :: Typed",
+]
 
 [build-system]
-requires = ["setuptools>=61"]
+requires = ["setuptools>=77"]
 build-backend = "setuptools.build_meta"
 
 [dependency-groups]
-dev = []
+# ruff, pyright and ty come from the dev shell (flake.nix), pinned by flake.lock: the ruff and ty wheels need
+# nix-ld, the pyright wrapper downloads a node that needs it too.
+dev = [
+    "hypothesis>=6.170.14",
+    "mypy>=2.4.1",
+    "pytest>=9.2.0",
+    "pytest-asyncio",
+    "pytest-cov",
+    "pytest-xdist",
+    "tox",
+]
+bench = ["pytest-benchmark"]  # benchmarks only; disabled when run with pytest-xdist (`-n`)
+
+[tool.uv]
+default-groups = ["dev", "bench"]  # so `uv sync` (direnv) keeps the bench group
+
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+xfail_strict = true
+asyncio_mode = "auto"  # pytest-asyncio: every `async def` test and fixture runs on an event loop
+asyncio_default_fixture_loop_scope = "function"
+filterwarnings = ["ignore:cpu_backend='thread' with the GIL enabled"]
+
+[tool.coverage.run]
+branch = true
+source = ["strom"]
+
+[tool.coverage.report]
+show_missing = true
+
+[tool.mypy]
+strict = true
+enable_error_code = ["explicit-override"]
+files = ["src", "tests", "benchmarks", "bin"]  # examples: each in its own environment (bin/run_examples.py --type)
+
+[[tool.mypy.overrides]]
+module = ["strom", "strom.*"]
+disallow_any_expr = true
+
+[tool.pyright]
+pythonVersion = "3.14"
+include = ["src", "tests", "benchmarks", "bin"]  # examples: see [tool.mypy]
+venvPath = "."
+venv = ".venv"
+enableTypeIgnoreComments = false  # `# type: ignore` is mypy's; pyright's own is `# pyright: ignore[rule]`
+reportUnnecessaryTypeIgnoreComment = "error"  # an ignore expires with the bug it was for (mypy: strict)
+
+# The library in strict mode, spelled out: `strict = ["src"]` can't be overridden per rule. Left out (see
+# docs/decisions.md, pyright strict): reportUnknownArgumentType, reportUnknownMemberType,
+# reportUnknownVariableType, reportUnnecessaryComparison.
+[[tool.pyright.executionEnvironments]]
+root = "src"
+reportPrivateUsage = "error"
+reportUnusedClass = "error"
+reportUnusedFunction = "error"
+strictListInference = true
+strictSetInference = true
+strictDictionaryInference = true
+reportMissingTypeStubs = "error"
+reportUnusedImport = "error"
+reportUnusedVariable = "error"
+reportDuplicateImport = "error"
+reportWildcardImportFromLibrary = "error"
+reportUntypedFunctionDecorator = "error"
+reportUntypedClassDecorator = "error"
+reportUntypedBaseClass = "error"
+reportUntypedNamedTuple = "error"
+reportTypeCommentUsage = "error"
+reportConstantRedefinition = "error"
+reportDeprecated = "error"
+reportInconsistentConstructor = "error"
+reportInvalidStringEscapeSequence = "error"
+reportUnknownParameterType = "error"
+reportUnknownLambdaType = "error"
+reportMissingParameterType = "error"
+reportMissingTypeArgument = "error"
+reportInvalidTypeVarUse = "error"
+reportUnnecessaryIsInstance = "error"
+reportUnnecessaryCast = "error"
+reportUnnecessaryContains = "error"
+reportAssertAlwaysTrue = "error"
+reportSelfClsParameterName = "error"
+reportInvalidStubStatement = "error"
+reportIncompleteStub = "error"
+reportUnsupportedDunderAll = "error"
+reportUnusedExpression = "error"
+reportMatchNotExhaustive = "error"
+
+[tool.ty.environment]
+python-version = "3.14"
+python = ".venv"  # as pyright's `venv`: not the active one (a tox env runs `make type` with its own active)
+
+[tool.ty.src]
+include = ["src", "tests", "benchmarks", "bin"]  # examples: see [tool.mypy]
+
+[tool.ty.rules]
+unused-ignore-comment = "error"  # a warning would pass `ty check`: an ignore expires with the bug it was for
 
 [tool.ruff]
-target-version = "py312"
+target-version = "py314"
+line-length = 120
 
 [tool.ruff.lint]
-select = ["ANN", "B", "D", "E", "F", "I", "PLE", "S", "UP"]
-ignore = ["D100", "D104"]
+select = ["ANN", "B", "E", "F", "I", "PLE", "S", "UP", "W"]
+ignore = [
+    "UP046",  # explicit TypeVars on purpose: pyright infers PEP 695 type parameters of the sum tags invariant
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "S101",  # assert is how pytest checks
+    "S603",  # subprocesses run sys.executable with fixed arguments
+]
+"benchmarks/**" = ["S101"]  # assert is how pytest checks
+"bin/**" = [
+    "S603",  # runs sys.executable, git and the checkers with arguments of its own
+    "S607",  # git, pyright and ty from PATH (the dev shell)
+]

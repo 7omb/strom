@@ -1,3 +1,7 @@
+# `pre-commit install` installs both hooks: at a commit, the fixers and `make lint`, `make type`; at a push,
+# `make check` (which also runs the tests and the examples). The checks themselves are defined in the Makefile only.
+default_install_hook_types: [pre-commit, pre-push]
+default_stages: [pre-commit]
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
   rev: v6.0.0
@@ -9,16 +13,56 @@ repos:
   - id: check-toml
   - id: check-yaml
   - id: detect-private-key
-- repo: https://github.com/astral-sh/ruff-pre-commit
-  rev: v0.17.2
+  - id: end-of-file-fixer
+  - id: trailing-whitespace
+  - id: check-added-large-files
+# Markdown: pure Python, so pre-commit's own venv runs it on NixOS too; options in .mdformat.toml.
+- repo: https://github.com/hukkin/mdformat
+  rev: 1.0.0
   hooks:
-  - id: ruff
-    args: [ --fix ]
-  - id: ruff-format
+  - id: mdformat
+    additional_dependencies:
+    - mdformat-gfm==1.0.0
+    - mdformat-frontmatter==2.2.0
+# Local hooks: the tools come from the dev shell (flake.nix) or the project venv and take their options from
+# pyproject.toml. Downloaded ruff binaries don't run on NixOS; mypy and pyright need pytest and hypothesis.
 - repo: local
   hooks:
-  - id: nix-fmt
-    name: nix-fmt
-    entry: "nix fmt"
-    types: [nix]
+  # fixers of the files in the commit
+  - id: ruff
+    name: ruff (fixes)
+    entry: ruff check --fix
     language: system
+    types_or: [python, pyi]
+    require_serial: true
+  - id: ruff-format
+    name: ruff format
+    entry: ruff format
+    language: system
+    types_or: [python, pyi]
+    require_serial: true
+  - id: nixpkgs-fmt
+    name: nixpkgs-fmt
+    entry: nixpkgs-fmt
+    language: system
+    types: [nix]
+  # the checks: the make targets, on the whole working tree
+  - id: lint
+    name: make lint
+    entry: make lint
+    language: system
+    always_run: true  # the docs check also fails when a cited file of any type goes
+    pass_filenames: false
+  - id: type
+    name: make type
+    entry: make type
+    language: system
+    types_or: [python, pyi, toml]
+    pass_filenames: false
+  - id: check
+    name: make check
+    entry: make check
+    language: system
+    always_run: true
+    pass_filenames: false
+    stages: [pre-push]

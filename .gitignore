@@ -9,3 +9,14 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Tool caches and reports
+.hypothesis/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.benchmarks/
+.tox/
+.coverage
+htmlcov/
+.checks/

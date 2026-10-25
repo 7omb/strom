@@ -1,0 +1,25 @@
+version = 1
+revision = 5
+requires-python = ">=3.14"
+
+[manifest]
+requirements = [{ name = "strom", editable = "../" }]
+
+[[package]]
+name = "strom"
+version = "0.1.0"
+source = { editable = "../" }
+
+[package.metadata]
+
+[package.metadata.requires-dev]
+bench = [{ name = "pytest-benchmark" }]
+dev = [
+    { name = "hypothesis", specifier = ">=6.170.14" },
+    { name = "mypy", specifier = ">=2.4.1" },
+    { name = "pytest", specifier = ">=9.2.0" },
+    { name = "pytest-asyncio" },
+    { name = "pytest-cov" },
+    { name = "pytest-xdist" },
+    { name = "tox" },
+]
