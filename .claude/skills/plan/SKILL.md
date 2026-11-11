@@ -6,7 +6,7 @@ description: Writing, revising or refreshing a design or migration plan for stro
 # Plans
 
 A plan lives in `docs/plans/<topic>.md`, linked from its task in `docs/todo.md`, and is deleted once done
-(`.claude/rules/docs.md`). Read `ARCHITECTURE.md` and the sections of `docs/decisions.md` it touches first.
+(`.claude/rules/docs.md`). Read `ARCHITECTURE.md` and the decisions in `docs/decisions/` it touches first.
 
 ## Writing one
 

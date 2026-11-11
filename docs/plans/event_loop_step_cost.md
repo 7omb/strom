@@ -52,7 +52,7 @@ their numbers with a source; to be measured, not assumed.
 
 - An internal source-like step in the runner (option (a)) fixes only the first step of a run, and puts its name into
   group names and stage notes.
-- Separate task loops per leaf kind were rejected before (docs/decisions.md, Metrics check: duplicated code); this keeps
+- Separate task loops per leaf kind were rejected before (docs/decisions/metrics-check.md: duplicated code); this keeps
   one loop with one branch at the iteration, like the `recording` checks.
 
 ## Risks and checks
@@ -74,5 +74,5 @@ their numbers with a source; to be measured, not assumed.
 3. Injected bugs (`bin/mutant.py`): no close of the sync iterator when stopped early; no `sleep(0)` after the SKIP
    budget; the sync path chosen for an io leaf.
 4. `bin/ab.py HEAD .` on `benchmarks/benchmark.py -k "event_loop or lifted or product"`, and the comparison of step 1
-   again (many inputs should then cost about what one input's items cost); record the numbers in docs/decisions.md
-   (sections "Fusion" and "Runner costs"), then delete this plan.
+   again (many inputs should then cost about what one input's items cost); record the numbers in
+   `docs/decisions/fusion.md` and `docs/decisions/runner-costs.md`, then delete this plan.

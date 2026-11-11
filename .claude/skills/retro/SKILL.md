@@ -18,13 +18,15 @@ description: Retrospective of past Claude Code sessions on strom - find friction
    - hook blocks and tool errors with a common cause, long runs that hit a timeout,
    - docs that went stale (a check in `bin/check_docs.py` could catch the kind).
 2. **Compare** with what exists: `CLAUDE.md`, `.claude/rules/`, the skills, the hooks (`strom_tools.hooks.dispatcher`
-   lists them), `bin/`, and the "Agent docs", "Change checks" and "Self-improvement" sections of `docs/decisions.md`
-   (rejected proposals stay rejected without a new reason).
+   lists them), `bin/`, and the decisions `docs/decisions/agent-docs.md`, `docs/decisions/change-checks.md` and
+   `docs/decisions/self-improvement.md` (rejected proposals stay rejected without a new reason). For each note in
+   `.claude/rules/`: whether a check or a tool's message says it by now (then it goes), and whether its `paths` still
+   fit the work it is about.
 3. **Report** a numbered list (skill `review`, Output): per finding the evidence (sessions, counts), the cause and the
    fix, where it goes by `.claude/rules/docs.md`. Prefer enforcing (a hook, a check in `make lint`, a script) over
    another instruction; keep `CLAUDE.md` under its size limit.
 4. **Apply** what the user picks; settings changes (`.claude/settings.json`) can't be written by Claude: change the hook
-   modules instead, or prepare the file and ask the user to copy it. Record the decision in `docs/decisions.md` (section
-   "Self-improvement").
+   modules instead, or prepare the file and ask the user to copy it. Record the decision in
+   `docs/decisions/self-improvement.md`.
 5. **Mark** the retrospective, so the SessionStart hook counts from here:
    `uv run --frozen python bin/sessions.py mark-retro`.

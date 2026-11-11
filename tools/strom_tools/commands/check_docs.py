@@ -17,10 +17,15 @@ cites
 Tracked, not merely there: a clone has only what is tracked, so a doc that cites a new file fails here until
 the file is added (`git add`); such a reference is printed with that hint.
 Spans with placeholders (`<topic>`, `...`, `…`), spaces, URLs, absolute or home paths (`/proc/…`, `~/`) are
-skipped, and so are code blocks and the lists under **Rejected** up to the next heading (`docs/decisions.md`
-cites old names there). So a doc names a file that is only planned without its path and extension (a module
-`shards` in `src/strom/_runtime/`) or with an ellipsis. Each missing reference is printed as `FILE:LINE: REF`
-with a hint, each long line as `FILE:LINE: N characters`; the exit code is 1 if there is any.
+skipped, and so are code blocks and the lists under **Rejected** up to the next heading (the decisions in
+`docs/decisions/` cite old names there). So a doc names a file that is only planned without its path and
+extension (a module `shards` in `src/strom/_runtime/`) or with an ellipsis. Each missing reference is printed
+as `FILE:LINE: REF` with a hint, each long line as `FILE:LINE: N characters`; the exit code is 1 if there is
+any.
+A rules file of Claude Code (`.claude/rules/*.md`) needs `paths` in its front matter (Claude Code loads one
+without them in every session), each of its globs must match a tracked file, and its text (without the front
+matter) stays under `strom_tools.docs_check.NOTE_LIMIT`: several notes fit into one hook output, and a longer
+one holds two topics.
 """
 
 from collections.abc import Sequence

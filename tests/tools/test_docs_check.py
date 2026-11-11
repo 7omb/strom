@@ -3,9 +3,11 @@ from tool_helpers import commit, write
 
 from strom_tools.docs_check import (
     _MISSING,
+    NOTE_LIMIT,
     UNTRACKED,
     LongLine,
     MissingCitation,
+    RuleNote,
     UntrackedCitation,
     _citation,
     _Context,
@@ -20,6 +22,7 @@ from strom_tools.docs_check import (
     known,
     problems,
     rendered,
+    rule_notes,
 )
 from strom_tools.workspace.repository import Repository
 
@@ -142,6 +145,40 @@ def test_long_lines_are_problems_except_front_matter_urls_and_wide_tables(docume
     text = f"---\ndescription: {long}\n---\n\n{long}\n\n{'y' * 120}\n\nhttps://example.org/{long}\n\n| {long} |\n"
     assert check(documented, text) == ["121 characters (at most 120)", "125 characters (at most 120)"]
     assert check(documented, f"| {long} |\n", "docs/research/tables.md") == []
+
+
+def test_rule_notes_are_the_rules_files_with_their_paths_and_body(documented: Repository) -> None:
+    write(
+        documented,
+        ".claude/rules/tests.md",
+        '---\npaths:\n  - "tests/**"\n  - docs/*.md\n---\n\n# Tests\n\nNo sleeps.\n',
+    )
+    write(documented, ".claude/rules/notes.md", "# Notes\n\n---\n\nNo front matter.\n")
+    directory = documented.root / ".claude/rules"
+    assert rule_notes(documented) == [
+        RuleNote(directory / "notes.md", [], "# Notes\n\n---\n\nNo front matter."),
+        RuleNote(directory / "tests.md", ["tests/**", "docs/*.md"], "# Tests\n\nNo sleeps."),
+    ]
+
+
+def test_a_rules_file_needs_paths_that_match_tracked_files(documented: Repository) -> None:
+    scoped = '---\npaths:\n  - "tests/**"\n  - "bin/new.py"\n  - "gone/**"\n---\n\n# Tests\n'
+    assert check(documented, scoped, ".claude/rules/tests.md") == [
+        "bin/new.py matches no tracked file: the note never loads for it",
+        "gone/** matches no tracked file: the note never loads for it",
+    ]
+    unscoped = check(documented, "# Notes\n", ".claude/rules/notes.md")
+    assert unscoped == ["no `paths` in its front matter: Claude Code would load it in every session"]
+    assert check(documented, "# Notes\n", "docs/notes.md") == [], "only a rules file needs paths"
+
+
+def test_a_rules_file_stays_under_the_note_limit(documented: Repository) -> None:
+    front = '---\npaths:\n  - "tests/**"\n---\n\n'
+    body = "\n".join(["x" * 99] * (NOTE_LIMIT // 100))
+    assert check(documented, f"{front}{body}\n", ".claude/rules/tests.md") == []
+    assert check(documented, f"{front}{body}\nmore\n", ".claude/rules/tests.md") == [
+        f"{len(body) + 5} characters of text (at most {NOTE_LIMIT}): a second topic, a note of its own"
+    ]
 
 
 def test_listed_takes_the_files_it_is_given(documented: Repository) -> None:

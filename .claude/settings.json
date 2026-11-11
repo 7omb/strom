@@ -31,7 +31,11 @@
       "Bash(git restore --staged:*)",
       "Bash(git restore -S:*)",
       "Bash(git update-index:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(git stash push:*)",
+      "Bash(git stash pop:*)",
+      "Bash(git stash apply:*)",
+      "Bash(git stash drop:*)"
     ],
     "ask": [
       "Bash(make bench:*)"

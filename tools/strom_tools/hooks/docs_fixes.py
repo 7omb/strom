@@ -7,7 +7,7 @@ At the end of a turn, if the working tree has changes:
   - `make lint-docs` (the docs check on every doc): a change to the code may have taken a path or a name that a
     doc cites.
 What they report goes back to Claude, once per turn like ruff's errors (`python_fixes`). Not so the citations of
-files that are only untracked: staging is the user's (`docs/decisions.md`, Index), so Claude could not make the
+files that are only untracked: staging is the user's (`docs/decisions/git-index.md`), so Claude could not make the
 check pass. If nothing else is wrong, they go to the user as a note, once per set of them, and block nothing;
 `make lint` keeps failing for them until they are staged."""
 

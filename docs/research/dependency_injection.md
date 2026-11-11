@@ -4,8 +4,8 @@ Research of 2026-11-09: where `strom._runtime` shares code by inheritance, what 
 domain-driven design (DDD) recommend for such code, and designs that inject parts instead. It complements
 `docs/research/backends.md`, which composes backends from layers, scopes and records (its approaches are cited here, not
 repeated). It describes the code of that date. Additions to the public API need the user's go-ahead, and decisions taken
-from this go to `docs/decisions.md` (sections Pools API, Offloading, Module structure, Worker pool). Claims not checked
-against their sources are marked [unverified]. Designs are unprobed unless they say so.
+from this go to `docs/decisions/` (`pools-api.md`, `offloading.md`, `module-structure.md`, `worker-pool.md`). Claims not
+checked against their sources are marked [unverified]. Designs are unprobed unless they say so.
 
 ## Where `_runtime` inherits
 

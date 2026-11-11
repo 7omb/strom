@@ -1,5 +1,5 @@
-"""The import order of the library's packages as `ARCHITECTURE.md` (Packages) and `docs/decisions.md` (Module
-structure) state it. Imports inside functions count: they are imports all the same."""
+"""The import order of the library's packages as `ARCHITECTURE.md` (Packages) and
+`docs/decisions/module-structure.md` state it. Imports inside functions count: they are imports all the same."""
 
 import ast
 import sys

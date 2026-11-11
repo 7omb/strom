@@ -15,6 +15,11 @@ from dataclasses import dataclass
 from strom_tools.hooks.hook_events import HookEvent, SessionEnded, SessionStarted, ToolUsed, TurnEnded
 from strom_tools.json_objects import JsonObject
 
+CONTEXT_LIMIT = 10_000
+"""The characters Claude Code takes of `additionalContext`, and of `systemMessage`, in one hook output (hooks
+reference, read 2026-11-11): a longer text goes to a file, of which Claude sees a preview (2026-11-11: three
+rules in one note of 23.5 KB)."""
+
 
 @dataclass(frozen=True)
 class Block:
@@ -59,9 +64,9 @@ def answer(event: HookEvent, results: Sequence[HookResult | Failed]) -> Answer:
     for_claude = [note.for_claude for note in notes if note.for_claude is not None]
     output: JsonObject = {}
     if for_user:
-        output["systemMessage"] = "\n\n".join(for_user)
+        output["systemMessage"] = _within_limit(for_user)
     if for_claude:
-        context: JsonObject = {"hookEventName": _name_of(event), "additionalContext": "\n\n".join(for_claude)}
+        context: JsonObject = {"hookEventName": _name_of(event), "additionalContext": _within_limit(for_claude)}
         output["hookSpecificOutput"] = context
     told = [result.message for result in results if isinstance(result, Block | Failed)]
     return Answer(
@@ -69,6 +74,18 @@ def answer(event: HookEvent, results: Sequence[HookResult | Failed]) -> Answer:
         f"{json.dumps(output)}\n" if output else "",
         "".join(f"{message}\n" for message in told),
     )
+
+
+def _within_limit(texts: Sequence[str]) -> str:
+    """The texts joined, each whole while it fits into `CONTEXT_LIMIT`; one that does not is replaced by a line
+    saying so (left out too where that line does not fit)."""
+    kept: list[str] = []
+    for text in texts:
+        for candidate in (text, f"(a note of {len(text)} characters was left out: over Claude Code's limit)"):
+            if len("\n\n".join([*kept, candidate])) <= CONTEXT_LIMIT:
+                kept.append(candidate)
+                break
+    return "\n\n".join(kept)
 
 
 def _name_of(event: HookEvent) -> str:

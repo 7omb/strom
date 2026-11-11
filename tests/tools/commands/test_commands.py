@@ -1,6 +1,6 @@
 """The commands as a whole: each one's help, its usage errors, and the exit codes that differ from "0 or 1". What
 each prints and exits with: the test modules beside this one (a module for the commands that have a kind of
-outcome in common); `docs/decisions.md` (Tool package) says what only a real run covers."""
+outcome in common); `docs/decisions/tool-package.md` says what only a real run covers."""
 
 import importlib
 from collections.abc import Callable, Sequence

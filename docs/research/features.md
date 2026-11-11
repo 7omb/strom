@@ -3,8 +3,8 @@
 Research of 2026-11-08: what strom has and lacks compared with production data processing libraries. Compared with
 in-process Python libraries (pypeln, mpire, aiostream, streamz), stream processors (Bytewax, Faust, Flink, Beam), batch
 engines (Ray Data, Dask), and stream libraries of other languages (Akka/Pekko Streams, Reactor/Rx, Haskell
-conduit/streamly). Gaps that `docs/decisions.md` rejects on purpose are marked *rejected*. Gaps already in
-`docs/todo.md` are marked *todo*. Decisions taken from this go to `docs/decisions.md`, tasks to `docs/todo.md`.
+conduit/streamly). Gaps that `docs/decisions/` rejects on purpose are marked *rejected*. Gaps already in `docs/todo.md`
+are marked *todo*. Decisions taken from this go to `docs/decisions/`, tasks to `docs/todo.md`.
 
 ## Strengths
 

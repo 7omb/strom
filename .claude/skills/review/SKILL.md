@@ -5,7 +5,7 @@ description: Review of strom's code, design or docs as a numbered list of findin
 
 # Reviewing strom
 
-Read `ARCHITECTURE.md` (conventions, lenses) and the sections of `docs/decisions.md` that the scope touches first: a
+Read `ARCHITECTURE.md` (conventions, lenses) and the decisions in `docs/decisions/` that the scope touches first: a
 finding that re-proposes a rejected alternative needs a new reason, stated as such.
 
 ## Scope and criteria
@@ -24,7 +24,7 @@ what the request names; when it names nothing, all of these:
 - **Tests**: orthogonal to each other, testing behaviour through the public API where possible; no public addition only
   for tests.
 - **Docs**: each fact once and in its place (`.claude/rules/docs.md`), short and precise, up to date
-  (`bin/check_docs.py`), no history of past designs outside `docs/decisions.md`.
+  (`bin/check_docs.py`), no history of past designs outside `docs/decisions/`.
 - **UX and DX**: what a user or contributor must learn; names that mislead.
 
 ## Output
@@ -34,8 +34,7 @@ what the request names; when it names nothing, all of these:
   options (`4A`, `4B`) with their trade-off and a recommendation.
 - Concise: no praise, no findings without a fix, no restating the code.
 - More than about five findings: also write the list to `docs/plans/<topic>-review.md`, so that later sessions can
-  resolve the IDs; delete it once its findings are done or rejected (rejections with a reason go to
-  `docs/decisions.md`).
+  resolve the IDs; delete it once its findings are done or rejected (rejections with a reason go to `docs/decisions/`).
 - Change nothing in a review unless asked; the user picks the findings to implement. Recommend a session per group of
   findings (the file carries the IDs): a session that implements several groups outgrows its context, and after each
   summary it reads the docs again.

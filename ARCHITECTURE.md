@@ -3,7 +3,7 @@
 How strom is built and the conventions for working on it: the starting point for contributors and coding agents.
 Elsewhere, each once: the quick start in `README.md`; the user guide (the public API and its semantics) in the docstring
 of `src/strom/__init__.py` (`python -m pydoc strom`); the terms in `GLOSSARY.md`; decisions and rejected alternatives in
-`docs/decisions.md`; open tasks in `docs/todo.md`; the working agreements and commands in `CLAUDE.md`.
+`docs/decisions/` (a file per topic); open tasks in `docs/todo.md`; the working agreements and commands in `CLAUDE.md`.
 
 ## Overview
 
@@ -33,12 +33,12 @@ is public in one of them only; apart from `strom.testing`, they only re-export f
 | `examples/` | runnable examples, each a uv script with its own lock that checks its results (`bin/run_examples.py`) |
 | `tools/` | `strom_tools`, the development tools (Tools, below); tested in `tests/tools/` |
 | `bin/` | a script per command of the tools: checks of a change and the docs, A/B benchmarks, renames, sessions |
-| `docs/` | `decisions.md`, `todo.md`, `plans/`, `research/` |
+| `docs/` | `decisions/`, `todo.md`, `plans/`, `research/` |
 
 ## Packages
 
-The private packages of `src/strom` by role, bottom-up: each imports only from those above it (see `docs/decisions.md`,
-Module structure; `tests/test_packages.py` checks it). Terms: `GLOSSARY.md`.
+The private packages of `src/strom` by role, bottom-up: each imports only from those above it (see
+`docs/decisions/module-structure.md`; `tests/test_packages.py` checks it). Terms: `GLOSSARY.md`.
 
 Module layout: packages by role (the layers below), modules inside a package by feature. A feature its consumers use (a
 backend, worker handles, `Pools`) is one module, or one sub-package, holding everything only it needs (the process
@@ -105,11 +105,11 @@ follows the conventions below, with the library's checker settings. Its guide is
 - entry points: `hooks` (the handlers and their dispatcher) and `commands` (one per script); only they read arguments or
   stdin, print and exit. Below them a function takes the repository, returns data and raises `ToolError`.
 
-`tests/tools/test_structure.py` checks the imports, the layers and the wrappers (`docs/decisions.md`, Tool package).
+`tests/tools/test_structure.py` checks the imports, the layers and the wrappers (`docs/decisions/tool-package.md`).
 
 ## Design notes
 
-What the code doesn't show at a glance. `docs/decisions.md` refers to these sections by name.
+What the code doesn't show at a glance. The decisions in `docs/decisions/` refer to these sections by name.
 
 **Semantics**
 
@@ -166,8 +166,8 @@ What the code doesn't show at a glance. `docs/decisions.md` refers to these sect
 **Code**
 
 - Everything is clean in mypy strict (the library and the tools also `disallow_any_expr`), pyright (default mode; the
-  library and the tools strict except the rules in `docs/decisions.md`) and ruff; the library and the tools also in ty.
-  ty diagnostics in `tests/`: add none. Checker limitations: `.claude/rules/typing.md`.
+  library and the tools strict except the rules in `docs/decisions/pyright-strict.md`) and ruff; the library and the
+  tools also in ty. ty diagnostics in `tests/`: add none. Checker limitations: `.claude/rules/typing.md`.
 - A false positive of one checker gets that checker's ignore comment on its line, with a dated entry in
   `.claude/rules/typing.md`; the code keeps the shape the other two accept. No code is shaped around a checker's bug: a
   shape stays when the bug is fixed, an ignore then fails the check.
@@ -195,7 +195,8 @@ What the code doesn't show at a glance. `docs/decisions.md` refers to these sect
   API. A backend's contract is tested on every backend (`tests/runtime/test_backends.py`), with the test-only
   `PicklingBackend` standing in for a backend without shared memory.
 - Never weaken an assertion to make a test pass or fast.
-- Testing notes and benchmark conventions: `.claude/rules/tests.md`.
+- Testing notes and benchmark conventions: `.claude/rules/tests.md`, `.claude/rules/benchmarks.md` and the notes of the
+  areas beside them.
 
 **Naming** (factories: see the table in the user guide)
 

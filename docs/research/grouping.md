@@ -18,7 +18,7 @@ homomorphism of bags (multisets): `f(A ⊎ B) = f(A) ⊎ f(B)`. This one propert
   `docs/research/durability.md`).
 
 Batching, `group_by` and `key_by` reach **across inputs**. Each design below is judged first by whether it keeps the
-homomorphism. `docs/decisions.md` leaves folds across inputs open; `docs/todo.md` has a per-input `aggregate`.
+homomorphism. `docs/decisions/` leaves folds across inputs open; `docs/todo.md` has a per-input `aggregate`.
 
 The three words mean different things in other libraries:
 
@@ -96,8 +96,8 @@ The three words mean different things in other libraries:
   `ArrowCircuit`). Its outputs depend on the order of the inputs per key. It is deterministic only if that order is
   fixed, which needs order per key (`ordered(f, key=…)`, `docs/research/ordering.md`). It also breaks strom's laws:
   `product(f, g)` calls g once per input, while `first(f) | second(g)` calls it once per output of f. A stateful g sees
-  different sequences, so the two sides differ. This is the same reason `docs/decisions.md` (Law rewrites) needs an
-  effect marker before rewrites that change calls.
+  different sequences, so the two sides differ. This is the same reason `docs/decisions/law-rewrites.md` needs an effect
+  marker before rewrites that change calls.
 - **Latency vs. throughput.** By Little's law, batching raises latency by the time an item waits for its batch. Timers
   bound that wait. Smart batching makes it zero at low load: a batch is what has queued up while the previous one ran,
   so it adapts to load with no tuning. AIMD (Clipper) and target durations (Beam's `BatchElements`) adapt the size to a
@@ -143,9 +143,9 @@ io_stage(using(db, batched(insert_rows, max_size=500)))   # or batched(using(...
   special case where `fn` maps a per-item function over the batch. A library helper `chunked(fn, size)` gives that
   without writing a batch function (a lambda wouldn't pickle for processes).
 - **Typing:** `batched` is generic in `I` and `O` and returns `Callable[[I], Iterable[O]]`, so every factory accepts it
-  without overloads. `docs/decisions.md` (Worker handles) rejected a keyword that changes `fn`'s arity; this design
-  avoids that. With handles, `using(db, batched(f))` gives `f` the handle per batch only if `using` passes it into the
-  batched function. The order of wrapping needs a decision.
+  without overloads. `docs/decisions/worker-handles.md` rejected a keyword that changes `fn`'s arity; this design avoids
+  that. With handles, `using(db, batched(f))` gives `f` the handle per batch only if `using` passes it into the batched
+  function. The order of wrapping needs a decision.
 - **Where batching is pointless:** event-loop `stage(batched(...))`, since a cheap synchronous function gains nothing.
   It could raise when built, or just run per item. `async_stage` makes sense: an async bulk API.
 
@@ -239,7 +239,7 @@ of Flink, Beam and Bytewax, and a different library. Out of scope.
    handling.
 3. **A3 `aggregate`** as planned; group per input with it.
 4. **B1 and B2** as documented patterns or examples. Folds across a run stay consumer code, as decided.
-5. **C1 to C3 rejected for now**, with the reasons above (record them in `docs/decisions.md` if the user agrees).
+5. **C1 to C3 rejected for now**, with the reasons above (record them in `docs/decisions/` if the user agrees).
 
 ## Open questions
 

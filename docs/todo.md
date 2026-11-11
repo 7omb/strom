@@ -1,22 +1,22 @@
 # Open tasks – strom
 
-Remove a task once it is done; decisions it led to go to `docs/decisions.md`.
+Remove a task once it is done; decisions it led to go to `docs/decisions/`.
 
 ## Performance
 
 - [ ] More passes (Hirzel et al. 2014): fuse `product` and `route` with event-loop-only branches (as the reference
-  semantics evaluates them); law rewrites (see `docs/decisions.md`); batch pool tasks (process-pool `executor.map`: 117
-  -> 1.8 µs per item, chunks 1 -> 100). Not applicable: load shedding, reordering opaque functions, redundancy
-  elimination, placement, fission.
+  semantics evaluates them); law rewrites (see `docs/decisions/law-rewrites.md`); batch pool tasks (process-pool
+  `executor.map`: 117 -> 1.8 µs per item, chunks 1 -> 100). Not applicable: load shedding, reordering opaque functions,
+  redundancy elimination, placement, fission.
 - [ ] Event-loop steps handle each input through an async generator (about 1.6 µs per input; runs on many inputs about
-  2x slower than with a source, see `docs/decisions.md`, Runner costs): a sync path in the task loop
+  2x slower than with a source, see `docs/decisions/runner-costs.md`): a sync path in the task loop
   (`docs/plans/event_loop_step_cost.md`).
 - [ ] Backend-agnostic offloading (2026-11-05) was slower than offloading onto executors, the state before it, on some
   rows (`bin/ab.py`, `BENCH_SCALE=0.5`, 7 interleaved runs each, 2026-11-06, p < 0.05): `thread_pool_io_stage[1]`/`[5]`
   1.09/1.12, `io_stage_on_one_input` 1.05, `event_loop_steps_around_a_pool_step` 1.06–1.08, `concurrency_vs_pool_size`
   1.02–1.03, `run_overhead_new_pools[thread]` 1.16 (about 150 µs per `Pools`), `[process]` 1.04; `cpu_stage` and the
   latency rows of 2 ms tasks within noise. That state no longer exists, so these ratios cannot be measured again, and
-  the built-in backends run on a pool of their own since 2026-11-11 (`docs/decisions.md`, Worker pool): compare the io
+  the built-in backends run on a pool of their own since 2026-11-11 (`docs/decisions/worker-pool.md`): compare the io
   rows with their reference rows (`thread_pool_reference_asyncio_offload_by_workers`) and profile what is left.
 - [ ] Process workers start about 0.9 ms faster when the forkserver's objects are frozen (`gc.freeze()` at import of the
   main module, 2026-11-09, a probe of `ProcessBackend` run and close, 25 lifecycles × 3): a collection during a worker's
@@ -99,10 +99,12 @@ Remove a task once it is done; decisions it led to go to `docs/decisions.md`.
   docs check block): the hook command prints both, and the hooks reference says the JSON is read beside exit code 2
   (`strom_tools.hooks.hook_results`). Observe it once on a running session: whether the note shows at the blocked stop,
   and again at the next one.
-- [ ] With the `deny` rule for the staging commands in `.claude/settings.json` (`docs/decisions.md`, Index): whether it
-  also stops the baseline recipe of `.claude/rules/tooling.md`, which runs `git add` on a scratch index
+
+- [ ] With the `deny` rule for the staging commands in `.claude/settings.json` (`docs/decisions/git-index.md`): whether
+  it also stops the baseline recipe of `.claude/rules/baselines.md`, which runs `git add` on a scratch index
   (`GIT_INDEX_FILE`). If so, that recipe becomes the baseline command of `docs/plans/retro-review.md`, S2.
-- [ ] The hook command for a Bash event takes 71 ms, 7 ms more than before the review of the tools (`docs/decisions.md`,
-  Tool package): most of it imports `strom_tools.sessions.transcripts` for `loaded_natively`. Measure whether moving the
-  raw scan out of `transcripts` (or importing it in `after_bash`) takes it back, against the clarity of one module for
-  the transcripts.
+
+- [ ] The hook command for a Bash event takes 71 ms, 7 ms more than before the review of the tools
+  (`docs/decisions/tool-package.md`): most of it imports `strom_tools.sessions.transcripts` for `loaded_natively`.
+  Measure whether moving the raw scan out of `transcripts` (or importing it in `after_bash`) takes it back, against the
+  clarity of one module for the transcripts.

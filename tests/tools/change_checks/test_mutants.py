@@ -93,6 +93,13 @@ def test_a_bug_is_tried_in_a_copy(doubling: Repository, tmp_path: Path, bug: Bug
     assert not (doubling.root / ".pytest_cache").exists()
 
 
+@pytest.mark.parametrize("args", [["-x", "-n", "4"], ["-q", "--exitfirst", "-nauto"], ["-x", "--numprocesses=2"]])
+def test_exitfirst_with_xdist_is_refused(doubling: Repository, tmp_path: Path, args: list[str]) -> None:
+    bug = Replace("src/strom/__init__.py", "2 * x", "3 * x")
+    with pytest.raises(ToolError, match="pytest-xdist ends with exit code 2 at the first failure"):
+        try_bug(doubling, bug, WorkingTree(), args, 120, tmp_path / "copy")
+
+
 def test_tests_that_fail_without_the_bug_give_no_verdict(doubling: Repository, tmp_path: Path) -> None:
     """The working tree's test fails; the committed one, taken with `tests_from`, passes."""
     write(doubling, "tests/test_double.py", "def test_double():\n    assert False\n")

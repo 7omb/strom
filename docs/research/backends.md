@@ -3,8 +3,8 @@
 Research of 2026-11-08: how the backend (`strom.backends`, `strom._runtime.executor_backend`) could be built from small
 composable parts instead of class hierarchies, compared with how other systems compose execution, routing and the
 lifetime of remote state. It describes the code of that date. Additions to the public API need the user's go-ahead;
-decisions taken from this go to `docs/decisions.md` (sections Pools API, Pools lifecycle, Worker pool, Offloading,
-Worker handles). Claims not checked against their sources are marked [unverified].
+decisions taken from this go to `docs/decisions/` (`pools-api.md`, `pools-lifecycle.md`, `worker-pool.md`,
+`offloading.md`, `worker-handles.md`). Claims not checked against their sources are marked [unverified].
 
 ## Where strom stands
 

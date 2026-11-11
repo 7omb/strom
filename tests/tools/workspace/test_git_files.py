@@ -57,7 +57,7 @@ def test_ignored_is_what_the_ignore_rules_match(files: Repository) -> None:
 
 
 def test_no_function_changes_the_index() -> None:
-    """The index is the user's (`docs/decisions.md`, Index): the tools read it, and write only into directories of
+    """The index is the user's (`docs/decisions/git-index.md`): the tools read it, and write only into directories of
     their own (`checkout_index`, `apply_patch`)."""
     source = Path(git_files.__file__).read_text()
     commands = set(re.findall(r'_git(?:_asked)?\(\s*[\w.]+,\s*"([\w-]+)"', source))

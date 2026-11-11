@@ -176,7 +176,7 @@ def _scan(path: Path, old: str, new: str) -> list[Hit]:
 
 def _move(old: Path, new: Path) -> None:
     """Moves a file in the working tree. The index stays as it is, also for a tracked file (it is the user's,
-    `docs/decisions.md`, Index): git finds the move by content once both paths are staged."""
+    `docs/decisions/git-index.md`): git finds the move by content once both paths are staged."""
     new.parent.mkdir(parents=True, exist_ok=True)
     old.rename(new)
 

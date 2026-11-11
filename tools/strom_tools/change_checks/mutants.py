@@ -97,11 +97,22 @@ def failed_tests(run: ProcessRun) -> list[str]:
     return [line for line in run.stdout.splitlines() if line.startswith(("FAILED", "ERROR"))]
 
 
+def _exits_first_in_workers(pytest_args: Sequence[str]) -> bool:
+    """Whether the arguments ask for both `-x` and pytest-xdist's workers (`-n`)."""
+    exits_first = any(arg in ("-x", "--exitfirst") for arg in pytest_args)
+    return exits_first and any(arg.startswith(("-n", "--numprocesses")) for arg in pytest_args)
+
+
 def try_bug(
     repository: Repository, bug: Bug, tests_from: Revision, pytest_args: Sequence[str], timeout: float, copy: Path
 ) -> Trial:
     """Runs the tests of `tests_from` in the empty directory `copy`, without the bug and, if they pass, with it;
     each run ends after `timeout` seconds at the latest."""
+    if _exits_first_in_workers(pytest_args):
+        raise ToolError(
+            "`-x` with `-n`: pytest-xdist ends with exit code 2 at the first failure, which reads as no verdict"
+            " (drop one of them)"
+        )
     command = pytest_command(*(pytest_args or _DEFAULT_PYTEST_ARGS))
     src = library_copy(repository, WorkingTree(), copy)
     export(repository, WorkingTree(), _MUTABLE, copy)

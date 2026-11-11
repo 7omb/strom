@@ -7,9 +7,9 @@ free-threaded 3.14t.
 conventions for code, tests and naming; they apply to every change. The user guide is the package docstring
 (`src/strom/__init__.py`).
 
-Notes per area are in `.claude/rules/` (Claude Code loads each when it reads or edits a matching file; other agents:
-read them when working there): `typing.md` (checker limitations), `tests.md` (testing notes, benchmarks), `tooling.md`
-(build and tool gotchas), `docs.md` (maintaining this file and the docs).
+Notes of one topic each are in `.claude/rules/` (Claude Code loads one when it reads or edits a file its `paths` match,
+a hook when a Bash command names one; other agents: read those of the files they work on); maintaining them and the
+docs: `docs.md` there.
 
 ## Working agreements
 
@@ -26,19 +26,20 @@ read them when working there): `typing.md` (checker limitations), `tests.md` (te
   reads too).
 - The index is the user's: never stage or unstage (`git add`, `git rm`, `git mv`, `git reset`, `git restore --staged`).
   The user keeps a state staged and compares Claude's changes with it (`git diff`). What needs staging (a new file that
-  a doc cites, `.claude/rules/tooling.md`) is a command for the user at the end of the report.
+  a doc cites, `.claude/rules/docs-format.md`) is a command for the user at the end of the report.
 - IDE diagnostics that arrive after edits lag behind multi-file changes; only `make type` counts.
 - Long runs only when the user asks: `make bench`, the suite run serially. Otherwise `make test` (parallel), benchmarks
-  with `bin/ab.py -- -k …` and `BENCH_SCALE`, in the background.
+  with `bin/ab.py -- -k …` and `BENCH_SCALE`, in the background. A background command notifies when it ends: wait for
+  that, never beside it with a `sleep` loop; to wait for anything else, the Monitor tool.
 - Reviews: skill `review`; plans: skill `plan` (a revised plan is self-contained, never mentions earlier versions).
 - A report ends with what is left: the open findings or tasks by ID, and the commands the user has to run (staging,
   commit, push, copying a prepared file).
 
 **Improving this setup**
 
-- A gotcha a later session would hit too (tool quirk, checker limitation, jail gap): add it to the matching
-  `.claude/rules` file in the same change, dated. A user correction of how you work: propose the line for `CLAUDE.md`, a
-  rule or a skill, and add it when the user agrees.
+- A gotcha a later session would hit too (tool quirk, checker limitation, jail gap): in the same change, make a tool say
+  it or enforce it where it can; else add it, dated, to the note of its topic in `.claude/rules` (`docs.md` there). A
+  user correction of how you work: propose the line for `CLAUDE.md`, a rule or a skill, and add it when the user agrees.
 - Work done twice by hand (a throwaway script, the same command sequence): propose a script in `bin/`.
 - Prefer enforcing (hook, check in `make lint`) over another instruction. Hooks: `.claude/hooks/dispatch.py` runs
   `strom_tools.hooks.dispatcher` for every event, so change its table and the handler modules, not
@@ -60,7 +61,7 @@ uv run pytest -n auto tests/ …  # options e.g. --hypothesis-profile=ci, -k "st
 make lint | type               # ruff check, format --check, bin/check_docs.py | mypy, pyright, ty, the examples' types
 make fix [FILES="…"]           # the fixers: ruff's fixes and format, mdformat; on every file, or on the given ones
 make examples                  # bin/run_examples.py [NAME ...]: every example (a uv script), or the named ones
-make bench | bench-results     # benchmarks/benchmark.py (no xdist) | each once, results only; .claude/rules/tests.md
+make bench | bench-results     # benchmarks/benchmark.py (no xdist) | each once, results only (rules/benchmarks.md)
 make build                     # sdist and wheel in dist/
 tox [-e 3.14t] [-- ARGS]       # the make targets; test on 3.14 and 3.14t (ARGS: pytest's), bench-results at scale 0.2
 pre-commit run --all-files     # the commit hook: standard hooks, mdformat, make fix, nixpkgs-fmt, make lint | type
@@ -81,6 +82,6 @@ docs, rules for Bash reads, the friction log, a note when the context was summar
 
 ## Docs
 
-Before proposing or reviewing a design, an alternative or a refactoring, read the sections of `docs/decisions.md` it
-touches (a section per topic: `grep '^## ' docs/decisions.md`); record each new decision there. Open tasks:
+Before proposing or reviewing a design, an alternative or a refactoring, read the decisions it touches: a file per topic
+in `docs/decisions/` (`ls`; a file's first sentence is the decision); record each new decision there. Open tasks:
 `docs/todo.md`. Where each kind of fact lives: `.claude/rules/docs.md`.

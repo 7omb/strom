@@ -10,7 +10,7 @@ the user's go-ahead. Claims not checked against their sources are marked [unveri
   know which inputs were done.
 - Pool tasks run at most once: a backend never retries (user guide, Failures). The first failure stops the run
   (fail-fast).
-- The inputs belong to the caller (no sources, `docs/decisions.md`, Factories and Runners). The outputs are a bag
+- The inputs belong to the caller (no sources, `docs/decisions/factories.md` and Runners). The outputs are a bag
   delivered to the consumer's code, which does the effects.
 
 Between runs, strom offers **at-most-once** per output and no recovery.
@@ -190,8 +190,8 @@ Only meaningful once there is state across inputs. Then:
   commit with the consumer).
 
 Barriers would be a new item kind in every queue and every step loop, which costs every item even with checkpointing
-off. A separate loop variant would avoid that, which `docs/decisions.md` (Metrics check) rejected for recording. Fit:
-poor for now, and premature without stateful stages.
+off. A separate loop variant would avoid that, which `docs/decisions/metrics-check.md` rejected for recording. Fit: poor
+for now, and premature without stateful stages.
 
 ### Level 5: distributed exactly-once with transactional sinks
 

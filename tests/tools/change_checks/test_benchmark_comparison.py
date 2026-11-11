@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
-from tool_helpers import QUICK_BENCHMARK, with_benchmark
+from tool_helpers import BENCHMARK, QUICK_BENCHMARK, with_benchmark, write
 
 from strom_tools.change_checks.benchmark_comparison import (
     Compared,
@@ -17,7 +17,9 @@ from strom_tools.change_checks.benchmark_comparison import (
     _metric_values,
     _spread,
     comparison,
+    cpu_list,
     cpu_set,
+    fast_cpus,
     measure,
     table,
 )
@@ -45,6 +47,18 @@ def test_a_run_measures_the_working_trees_benchmarks_with_a_copy_of_the_library(
     assert measure(repository, working, tmp_path / "c.json", "min", QUICK_BENCHMARK)["cost: test_cost"] > 0
     with pytest.raises(ToolError, match=r"benchmark run failed \(returncode=5\)"):
         measure(repository, working, tmp_path / "d.json", "min", [*QUICK_BENCHMARK, "-k", "no_such_benchmark"])
+
+
+def test_a_revision_without_a_module_the_benchmarks_import_is_named_as_the_cause(
+    repository: Repository, tmp_path: Path
+) -> None:
+    pytest.importorskip("pytest_benchmark")
+    with_benchmark(repository)
+    write(repository, "src/strom/metrics.py", "")
+    write(repository, "benchmarks/benchmark.py", f"import strom.metrics\n{BENCHMARK}")
+    committed = library_copy(repository, Commit("HEAD"), tmp_path / "A")
+    with pytest.raises(ToolError, match="the library of this revision lacks a module the benchmarks import"):
+        measure(repository, committed, tmp_path / "a.json", "us_per_input", QUICK_BENCHMARK)
 
 
 def test_a_comparison_yields_each_run_and_then_the_rows(repository: Repository) -> None:
@@ -91,6 +105,23 @@ def test_cpu_set_reads_what_taskset_takes() -> None:
     assert cpu_set("0,2,4-6") == {0, 2, 4, 5, 6}
     with pytest.raises(ValueError, match="invalid literal"):
         cpu_set("fast")
+
+
+def cpuinfo(*cores: int) -> str:
+    """`/proc/cpuinfo` of CPUs on the given core ids, in that order (physical id 0)."""
+    return "".join(f"processor\t: {cpu}\nphysical id\t: 0\ncore id\t\t: {core}\n\n" for cpu, core in enumerate(cores))
+
+
+def test_the_fast_cpus_of_a_hybrid_cpu_are_those_with_a_sibling() -> None:
+    assert fast_cpus(cpuinfo(0, 0, 4, 4, 8, 9, 10)) == {0, 1, 2, 3}
+    assert fast_cpus(cpuinfo(0, 0, 4, 4)) is None, "every core has two threads: one kind of core"
+    assert fast_cpus(cpuinfo(0, 1, 2)) is None, "no core has two threads: the kinds can't be told apart"
+    assert fast_cpus("") is None
+
+
+def test_cpu_list_is_what_taskset_takes() -> None:
+    assert cpu_list({0, 1, 2, 3, 6, 8, 9}) == "0-3,6,8-9"
+    assert cpu_set(cpu_list({5, 7, 8})) == {5, 7, 8}
 
 
 def test_runs_are_interleaved_a_b_b_a() -> None:

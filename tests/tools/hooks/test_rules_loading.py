@@ -3,19 +3,11 @@ from pathlib import Path, PurePosixPath
 import pytest
 from tool_helpers import write, write_transcript
 
+from strom_tools.docs_check import RuleNote
 from strom_tools.hooks.hook_events import Session, SessionEnded, ToolUsed
-from strom_tools.hooks.hook_results import Note
+from strom_tools.hooks.hook_results import CONTEXT_LIMIT, Note
 from strom_tools.hooks.memos import recalled, remembered_at
-from strom_tools.hooks.rules_loading import (
-    _loaded,
-    _matches,
-    _Rule,
-    _rules,
-    _to_add,
-    _touched,
-    after_bash,
-    at_end,
-)
+from strom_tools.hooks.rules_loading import _loaded, _matches, _to_add, _touched, after_bash, at_end
 from strom_tools.workspace.repository import Repository
 
 TESTS_RULE = '---\npaths:\n  - "tests/**"\n  - "benchmarks/**"\n---\n\n# Tests\n\nNo sleeps.\n'
@@ -41,16 +33,9 @@ def bash(command: str, session: Session = SESSION) -> ToolUsed:
     return ToolUsed(session, "Bash", None, command)
 
 
-def test_rules_are_the_files_with_paths_in_their_frontmatter(ruled: Repository) -> None:
-    directory = ruled.root / ".claude/rules"
-    assert _rules(ruled) == [
-        _Rule(directory / "tests.md", ["tests/**", "benchmarks/**"], "# Tests\n\nNo sleeps."),
-        _Rule(directory / "tooling.md", ["pyproject.toml"], "# Tooling\n\nUse make."),
-    ]
-
-
 def test_the_rules_to_add_match_a_touched_path_and_were_not_added_before() -> None:
-    tests, tooling = _Rule(Path("/r/tests.md"), ["tests/**"], ""), _Rule(Path("/r/tooling.md"), ["pyproject.toml"], "")
+    tests = RuleNote(Path("/r/tests.md"), ["tests/**"], "")
+    tooling = RuleNote(Path("/r/tooling.md"), ["pyproject.toml"], "")
     touched = [PurePosixPath("tests/a.py"), PurePosixPath("pyproject.toml")]
     assert _to_add(touched, [tests, tooling], []) == [tests, tooling]
     assert _to_add(touched, [tests, tooling], ["tests.md"]) == [tooling]
@@ -71,6 +56,7 @@ def test_a_directory_stands_for_files_in_it(ruled: Repository) -> None:
     named = _touched(ruled, "ls tests")
     assert named == [PurePosixPath("tests/x.py"), PurePosixPath("tests/x.md")]
     assert _matches(named, ["tests/**"]) and not _matches(named, ["benchmarks/**", "pyproject.toml"])
+    assert _touched(ruled, f"git diff . ./ {ruled.root}; bin/ab.py HEAD .") == [], "the root names no area"
 
 
 def test_a_rule_is_added_once_per_session(ruled: Repository) -> None:
@@ -83,6 +69,21 @@ def test_a_rule_is_added_once_per_session(ruled: Repository) -> None:
     assert recalled(_loaded(ruled, SESSION)) == ["tests.md", "tooling.md"]
     other = after_bash(ruled, bash("ls tests", Session("another", None)))
     assert isinstance(other, Note) and other.for_claude is not None and "tooling.md" not in other.for_claude
+
+
+def test_rules_over_the_hook_limit_are_named_and_added_by_a_later_command(ruled: Repository) -> None:
+    body = "x" * (CONTEXT_LIMIT // 3)
+    for name in ("a.md", "b.md", "c.md"):
+        write(ruled, f".claude/rules/{name}", f'---\npaths:\n  - "docs/**"\n---\n{body}\n')
+    first = after_bash(ruled, bash("cat docs/todo.md"))
+    assert isinstance(first, Note) and first.for_claude is not None
+    assert len(first.for_claude) <= CONTEXT_LIMIT
+    assert first.for_claude.startswith("Contents of .claude/rules/a.md:")
+    assert "Contents of .claude/rules/b.md:" in first.for_claude and "Contents of" not in first.for_claude[-200:]
+    assert first.for_claude.endswith("not added at Claude Code's limit for a hook output: `.claude/rules/c.md`")
+    assert recalled(_loaded(ruled, SESSION)) == ["a.md", "b.md"]
+    assert after_bash(ruled, bash("ls docs")) == Note(for_claude=f"Contents of .claude/rules/c.md:\n\n{body}")
+    assert recalled(_loaded(ruled, SESSION)) == ["a.md", "b.md", "c.md"]
 
 
 def test_a_command_that_touches_no_rule_adds_nothing(ruled: Repository) -> None:

@@ -13,8 +13,8 @@ type ItemFn[I, O] = Callable[[I], AsyncGenerator[O]]
 
 # Closing the outputs of an ItemFn: an async generator that ended (exhausted or raised) is closed
 # already, so the consumers of ItemFns close it only when they stop early (an exception, also
-# cancellation or GeneratorExit). This avoids the cost of `aclosing` per input (see docs/decisions.md,
-# "Closing outputs").
+# cancellation or GeneratorExit). This avoids the cost of `aclosing` per input (see
+# docs/decisions/closing-outputs.md).
 
 
 # ---- ItemFn builders (every leaf is 1:0..n)
@@ -74,7 +74,7 @@ def _expanding_listed[I, O](fn: Callable[[I], Iterable[O]], offloader: Offloader
 # ---- the ItemFn of a leaf in a streaming run
 def item_fn_of[I, O](leaf: Leaf[I, O], offloader: Offloader) -> ItemFn[I, O]:
     """The ItemFn of a leaf for one run of one step occurrence; the resource decides where its function runs
-    and how its items come (see docs/decisions.md, Resources)."""
+    and how its items come (see docs/decisions/resources.md)."""
     match leaf:
         case Expand():
             match leaf.resource:

@@ -2,7 +2,7 @@ import json
 from pathlib import Path
 
 from strom_tools.hooks.hook_events import HookEvent, Session, SessionEnded, SessionStarted, ToolUsed, TurnEnded
-from strom_tools.hooks.hook_results import Answer, Block, Failed, Note, _name_of, answer
+from strom_tools.hooks.hook_results import CONTEXT_LIMIT, Answer, Block, Failed, Note, _name_of, answer
 
 SESSION = Session("abcd", Path("/transcripts/abcd.jsonl"))
 
@@ -44,6 +44,15 @@ def test_notes_are_one_json_object() -> None:
     only_user = answer(TurnEnded(SESSION, False), [Note(for_user="one"), Note(for_user="two")])
     assert json.loads(only_user.stdout) == {"systemMessage": "one\n\ntwo"}
     assert only_user.stdout.count("\n") == 1 and only_user.stdout.endswith("\n")
+
+
+def test_notes_over_the_limit_are_left_out_whole() -> None:
+    half = "a" * (CONTEXT_LIMIT // 2)
+    notes = [Note(for_user=half, for_claude=half), Note(for_user="b" * (CONTEXT_LIMIT // 2), for_claude=half + "b")]
+    output = json.loads(answer(TurnEnded(SESSION, False), [*notes, Note(for_claude="c")]).stdout)
+    for text in (output["systemMessage"], output["hookSpecificOutput"]["additionalContext"]):
+        assert len(text) <= CONTEXT_LIMIT and text.startswith(f"{half}\n\n(a note of ") and "b" not in text
+    assert output["hookSpecificOutput"]["additionalContext"].endswith("\n\nc"), "a later note that fits goes in"
 
 
 def test_a_note_beside_a_block_is_still_printed() -> None:

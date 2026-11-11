@@ -142,7 +142,7 @@ prevent. Measure before adding that limit.
   the size of the buffer, and how long the head blocks.
 - **Combinator, not a run option.** A `stream(..., ordered=True)` would be a second spelling of `ordered(stage)`.
   Per-step flags (`io_stage(..., ordered=True)`) would spread ordering into every factory and every step loop.
-- **Cost.** Counting costs about 1.3 µs per body step and item (`docs/decisions.md`, `product`), plus one queue hop per
+- **Cost.** Counting costs about 1.3 µs per body step and item (`docs/decisions/product.md`), plus one queue hop per
   output and a dict operation per early output. To measure: A/B against `gather(f) | flatten()` and against `f` alone.
 
 ## Alternatives considered

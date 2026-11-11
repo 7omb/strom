@@ -45,7 +45,13 @@ def measure(repository: Repository, src: Path, out: Path, metric: str, pytest_ar
         env=python_path_env(src),
     )
     if run.returncode != 0:
-        raise ToolError(f"benchmark run failed (returncode={run.returncode}):\n{output(run)}")
+        cause = (
+            "; the library of this revision lacks a module the benchmarks import (they are the working tree's):"
+            " take a revision that has it"
+            if "ModuleNotFoundError: No module named 'strom." in output(run)
+            else ""
+        )
+        raise ToolError(f"benchmark run failed (returncode={run.returncode}){cause}:\n{output(run)}")
     report: _Report = json.loads(out.read_text())
     return _metric_values(report["benchmarks"], metric)
 
@@ -97,6 +103,33 @@ def cpu_set(cpus: str) -> set[int]:
         first, _, last = part.partition("-")
         numbers.update(range(int(first), int(last or first) + 1))
     return numbers
+
+
+def cpu_list(cpus: set[int]) -> str:
+    """The CPUs as `cpu_set` reads them, runs of consecutive ones as ranges (`0-3,6`)."""
+    parts: list[str] = []
+    for cpu in sorted(cpus):
+        if parts and cpu - 1 in cpus:
+            first = parts.pop().split("-")[0]
+            parts.append(f"{first}-{cpu}")
+        else:
+            parts.append(str(cpu))
+    return ",".join(parts)
+
+
+def fast_cpus(cpuinfo: str) -> set[int] | None:
+    """The CPUs of the fast cores, if `cpuinfo` (`/proc/cpuinfo`) shows cores of two speeds: on a hybrid CPU only
+    the fast ones have two threads each, so a CPU whose core has a sibling is fast where some cores have none
+    (2026-11-11, an i7-12700H). None where it can't tell: one kind of core, or none with two threads."""
+    cores: dict[tuple[str, str], list[int]] = {}
+    for block in cpuinfo.split("\n\n"):
+        parts = (line.partition(":") for line in block.splitlines())
+        fields = {key.strip(): value.strip() for key, _, value in parts}
+        if "processor" in fields and "core id" in fields:
+            cores.setdefault((fields.get("physical id", ""), fields["core id"]), []).append(int(fields["processor"]))
+    fast = {cpu for cpus in cores.values() if len(cpus) > 1 for cpu in cpus}
+    single = any(len(cpus) == 1 for cpus in cores.values())
+    return fast if fast and single else None
 
 
 @dataclass(frozen=True)

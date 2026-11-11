@@ -26,7 +26,7 @@ Uncommitted changes now:
 
 `REV` below is the revision the change starts from: `HEAD` while it is uncommitted, else e.g. `main~2`; `:index` is the
 state the user staged (compare with it; never stage a version yourself: the index is the user's, `CLAUDE.md`, Process).
-A baseline of an uncommitted tree is a commit made beside the index (`.claude/rules/tooling.md`).
+A baseline of an uncommitted tree is a commit made beside the index (`.claude/rules/baselines.md`).
 
 ## Steps
 
@@ -36,10 +36,10 @@ A baseline of an uncommitted tree is a commit made beside the index (`.claude/ru
    target and the full output of failures only. A test that fails or newly skips is part of the report, with its output.
 
 3. **Benchmarks**: `uv run --frozen python bin/ab.py REV . -- -k "<affected benchmarks>"` (interleaved runs; add
-   `BENCH_SCALE=0.2` for a first look, and `--cpus` where the cores differ in speed: `.claude/rules/tooling.md`). Run it
-   in the background (`run_in_background`): one benchmark group with the default 9 runs per side takes several minutes,
-   past a foreground timeout; its first lines say how long. Report the ratios with their p-values: timing claims need
-   repeated, interleaved runs, a single run is no evidence. The full `make bench` only when the user asks.
+   `BENCH_SCALE=0.2` for a first look, and `--cpus` where the cores differ in speed: `.claude/rules/ab-comparisons.md`).
+   Run it in the background (`run_in_background`): one benchmark group with the default 9 runs per side takes several
+   minutes, past a foreground timeout; its first lines say how long. Report the ratios with their p-values: timing
+   claims need repeated, interleaved runs, a single run is no evidence. The full `make bench` only when the user asks.
 
 4. **Typing**: `uv run --frozen python bin/typing_snapshot.py diff --against REV`. Every added diagnostic is a finding;
    `tests/` must get no new ty diagnostics.

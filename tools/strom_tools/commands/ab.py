@@ -19,17 +19,30 @@ each one, stderr says how many benchmarks it measured and how long the remaining
 and their spread (IQR), the ratio B/A of the medians and p, the two-sided p-value of a Mann-Whitney U test
 (normal approximation, no tie correction): below 0.05 the runs of A and B differ beyond what their spread
 explains. Timings are meaningful only on a quiet machine, and on a CPU with cores of two speeds only when
-pinned to the cores of one (`--cpus`); repeat a surprising result.
+pinned to the cores of one (`--cpus`; without it, stderr names the fast cores where `/proc/cpuinfo` tells them);
+repeat a surprising result.
 """
 
 import os
 import sys
 from collections.abc import Sequence
+from pathlib import Path
 
-from strom_tools.change_checks.benchmark_comparison import Compared, RunDone, Side, comparison, cpu_set, table
+from strom_tools.change_checks.benchmark_comparison import (
+    Compared,
+    RunDone,
+    Side,
+    comparison,
+    cpu_list,
+    cpu_set,
+    fast_cpus,
+    table,
+)
 from strom_tools.change_checks.revisions import WORKING_TREE, Revision, parse
 from strom_tools.commands import command_line
 from strom_tools.workspace.repository import this_repository
+
+_CPUINFO = Path("/proc/cpuinfo")
 
 
 def main(argv: Sequence[str]) -> int:
@@ -53,6 +66,11 @@ def main(argv: Sequence[str]) -> int:
             os.sched_setaffinity(0, cpu_set(cpus))  # the runs inherit it
         except (ValueError, OSError) as error:
             parser.error(f"--cpus {cpus}: {error}")
+    else:
+        fast = fast_cpus(_CPUINFO.read_text()) if _CPUINFO.exists() else None
+        if fast is not None:
+            warning = f"cores of two speeds, unpinned: timings depend on the core; pin with --cpus {cpu_list(fast)}"
+            print(warning, file=sys.stderr)
     command_line.require_modules("pytest", "pytest_benchmark")
     repository = this_repository()
     revisions: dict[Side, Revision] = {"A": parse(repository, name_a), "B": parse(repository, name_b)}

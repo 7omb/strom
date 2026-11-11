@@ -3,7 +3,7 @@
 Files are named by their path from the root, as git prints them. "Seen" are the files a clone or a commit of
 the working tree would hold: the tracked ones and the untracked ones that are not ignored.
 
-Nothing here changes the index, which is the user's (`docs/decisions.md`, Index): the tools read it, and what
+Nothing here changes the index, which is the user's (`docs/decisions/git-index.md`): the tools read it, and what
 they write of it goes into directories of their own."""
 
 from collections.abc import Sequence

@@ -81,7 +81,7 @@ enableTypeIgnoreComments = false  # `# type: ignore` is mypy's; pyright's own is
 reportUnnecessaryTypeIgnoreComment = "error"  # an ignore expires with the bug it was for (mypy: strict)
 
 # The library in strict mode, spelled out: `strict = ["src"]` can't be overridden per rule. Left out (see
-# docs/decisions.md, pyright strict): reportUnknownArgumentType, reportUnknownMemberType,
+# docs/decisions/pyright-strict.md): reportUnknownArgumentType, reportUnknownMemberType,
 # reportUnknownVariableType, reportUnnecessaryComparison.
 [[tool.pyright.executionEnvironments]]
 root = "src"
@@ -122,7 +122,7 @@ reportUnusedExpression = "error"
 reportMatchNotExhaustive = "error"
 
 # The tools with the library's rules: the same list (an environment can't refer to another one's; at the top
-# level the rules would hold for the tests too, see docs/decisions.md, Tool package).
+# level the rules would hold for the tests too, see docs/decisions/tool-package.md).
 [[tool.pyright.executionEnvironments]]
 root = "tools"
 reportPrivateUsage = "error"

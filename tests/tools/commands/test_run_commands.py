@@ -1,5 +1,6 @@
 """`check`, `mutant`, `run_examples` and `ab`: what they print and exit with for the outcomes of what they run."""
 
+import os
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -127,6 +128,7 @@ def test_ab_measures_both_sides_in_interleaved_runs_and_prints_the_table(
     monkeypatch.setattr(benchmark_comparison, "library_copy", library_copy)
     monkeypatch.setattr(benchmark_comparison, "measure", measure)
     monkeypatch.setattr(command_line, "require_modules", lambda *names: None)
+    monkeypatch.setattr(ab, "_CPUINFO", repository.root / "no-cpuinfo")
     arguments = [commit_id, ".", "-n", "2", "--metric", "min", "--", "-k", "run"]
     assert run_command(ab, arguments, repository, monkeypatch) == 0
     assert copies == [(Commit(commit_id), "A"), (WorkingTree(), "B")]
@@ -146,6 +148,22 @@ def test_ab_measures_both_sides_in_interleaved_runs_and_prints_the_table(
         run_command(ab, ["nowhere"], repository, monkeypatch)
 
 
+def test_ab_names_the_fast_cores_of_a_hybrid_cpu_when_unpinned(
+    repository: Repository, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    hybrid = "".join(f"processor : {cpu}\ncore id : {core}\n\n" for cpu, core in enumerate([0, 0, 4, 4, 8, 9]))
+    monkeypatch.setattr(ab, "_CPUINFO", write(repository, "cpuinfo", hybrid))
+    monkeypatch.setattr(command_line, "require_modules", lambda *names: None)
+    monkeypatch.setattr(benchmark_comparison, "library_copy", lambda repository, revision, dest: dest)
+    monkeypatch.setattr(benchmark_comparison, "measure", lambda *arguments: {"io: run": 1.0})
+    monkeypatch.setattr(os, "sched_setaffinity", lambda pid, cpus: None)  # not this test's process
+    commit(repository)
+    for arguments, warned in ((["-n", "1"], True), (["-n", "1", "--cpus", "0"], False)):
+        assert run_command(ab, arguments, repository, monkeypatch) == 0
+        first = capsys.readouterr().err.splitlines()[0]
+        assert (first == "cores of two speeds, unpinned: timings depend on the core; pin with --cpus 0-3") == warned
+
+
 def test_ab_compares_the_library_of_two_revisions_for_real(
     repository: Repository, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -153,6 +171,7 @@ def test_ab_compares_the_library_of_two_revisions_for_real(
     version). The metric is a constant of each revision's library: 1.0 in HEAD, 3.0 in the working tree."""
     pytest.importorskip("pytest_benchmark")
     with_benchmark(repository)
+    monkeypatch.setattr(ab, "_CPUINFO", repository.root / "no-cpuinfo")
     assert run_command(ab, ["HEAD", ".", "-n", "1", "--", *QUICK_BENCHMARK], repository, monkeypatch) == 0
     captured = capsys.readouterr()
     assert [line.split()[2] for line in captured.err.splitlines()] == ["A", "B"]

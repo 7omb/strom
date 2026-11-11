@@ -1,11 +1,13 @@
-"""The check of the docs: the paths and names they cite in backticks are tracked, and their lines are short.
+"""The check of the docs: the paths and names they cite in backticks are tracked, and their lines are short; a
+rules file of Claude Code (`.claude/rules`) has `paths` that match tracked files, and its text stays under
+`NOTE_LIMIT`.
 
 What counts as a citation and what is skipped: `strom_tools.commands.check_docs`."""
 
 import ast
 import posixpath
 import re
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path, PurePosixPath
@@ -23,6 +25,40 @@ _WIDE_TABLES = "docs/research"
 """Its tables are exempt from `_MAX_LINE` until they are restructured (`docs/todo.md`)."""
 UNTRACKED = " (untracked: `git add` it)"
 _MISSING = " (not found; if it is only planned: its name without path and extension, or with `…`)"
+_RULES = ".claude/rules"
+"""Claude Code's rules files: each loads when Claude touches a file its `paths` match (Read, Edit; for a Bash
+command `strom_tools.hooks.rules_loading`), one without `paths` in every session."""
+_GLOB_LINE = re.compile(r'\s*-\s+"?([^"\n]+?)"?\s*')
+"""A line of the `paths` list in a rules file's front matter."""
+NOTE_LIMIT = 2_500
+"""The characters of a rules file's text (without the front matter): so that several fit into one hook output
+(`strom_tools.hooks.hook_results.CONTEXT_LIMIT`), and a note that outgrows it holds a second topic."""
+
+
+@dataclass(frozen=True)
+class RuleNote:
+    """A rules file."""
+
+    path: Path
+    globs: list[str]
+    """Of its `paths` front matter; none without one."""
+    body: str
+    """Without the front matter."""
+
+
+def rule_notes(repository: Repository) -> list[RuleNote]:
+    """The rules files, in the order of their names."""
+    notes: list[RuleNote] = []
+    for path in sorted((repository.root / _RULES).glob("*.md")):
+        text = path.read_text(encoding="utf-8")
+        lines = list(_lines(text))
+        notes.append(RuleNote(path, [glob for _, glob in _globs(lines)], _body(lines)))
+    return notes
+
+
+def _body(lines: Iterable[_Line]) -> str:
+    """The text of a rules file without its front matter."""
+    return "\n".join(line.text for line in lines if line.context is not _Context.FRONT_MATTER).strip()
 
 
 @dataclass(frozen=True)
@@ -87,7 +123,34 @@ class UntrackedCitation:
     reference: str
 
 
-type Problem = LongLine | MissingCitation | UntrackedCitation
+@dataclass(frozen=True)
+class UnscopedNote:
+    """A rules file without `paths`: Claude Code loads it in every session."""
+
+    doc: str
+    line: int
+
+
+@dataclass(frozen=True)
+class DeadGlob:
+    """A glob of a rules file's `paths` that matches no tracked file: the note never loads for it."""
+
+    doc: str
+    line: int
+    glob: str
+
+
+@dataclass(frozen=True)
+class LongNote:
+    """A rules file whose text is over `NOTE_LIMIT`."""
+
+    doc: str
+    line: int
+    """Where its text starts."""
+    length: int
+
+
+type Problem = LongLine | MissingCitation | UntrackedCitation | UnscopedNote | DeadGlob | LongNote
 
 
 def rendered(problem: Problem) -> str:
@@ -99,21 +162,47 @@ def rendered(problem: Problem) -> str:
             return f"{doc}:{line}: {reference}{_MISSING}"
         case UntrackedCitation(doc, line, reference):
             return f"{doc}:{line}: {reference}{UNTRACKED}"
+        case UnscopedNote(doc, line):
+            return f"{doc}:{line}: no `paths` in its front matter: Claude Code would load it in every session"
+        case DeadGlob(doc, line, glob):
+            return f"{doc}:{line}: {glob} matches no tracked file: the note never loads for it"
+        case LongNote(doc, line, length):
+            return (
+                f"{doc}:{line}: {length} characters of text (at most {NOTE_LIMIT}): a second topic, a note of its own"
+            )
 
 
 def problems(doc: Path, known: Known) -> list[Problem]:
-    """The long lines of a doc and the references it cites that are not tracked, in the order of its lines."""
+    """The long lines of a doc, the references it cites that are not tracked and, for a rules file, the problems
+    of its `paths`, in the order of its lines."""
     root = known.repository.root
     name = shown(known.repository, doc)
     lines = list(_lines(doc.read_text(encoding="utf-8")))
     long_lines = _long_lines(name, lines, wide_tables=doc.is_relative_to(root / _WIDE_TABLES))
     directory = doc.parent.relative_to(root).as_posix() if doc.is_relative_to(root) else None
     cited = _uncited(name, lines, directory, known)
-    return sorted([*long_lines, *cited], key=_line_of)  # stable: a long line before what it cites
+    notes = _note_problems(name, lines, known) if directory == _RULES and doc.suffix == ".md" else []
+    return sorted([*notes, *long_lines, *cited], key=_line_of)  # stable: a long line before what it cites
 
 
 def _line_of(problem: Problem) -> int:
     return problem.line
+
+
+def _note_problems(doc: str, lines: Sequence[_Line], known: Known) -> list[UnscopedNote | DeadGlob | LongNote]:
+    """The problems of a rules file: its `paths` (none, or globs that match no tracked file) and its size."""
+    globs = _globs(lines)
+    if not globs:
+        return [UnscopedNote(doc, 1)]
+    files = [PurePosixPath(name) for name in known.tracked.files]
+    dead: list[UnscopedNote | DeadGlob | LongNote] = [
+        DeadGlob(doc, number, glob) for number, glob in globs if not any(file.full_match(glob) for file in files)
+    ]
+    body = _body(lines)
+    if len(body) <= NOTE_LIMIT:
+        return dead
+    start = next(line.number for line in lines if line.context is not _Context.FRONT_MATTER and line.text.strip())
+    return [*dead, LongNote(doc, start, len(body))]
 
 
 class _Context(Enum):
@@ -166,6 +255,15 @@ def _long_lines(doc: str, lines: Iterable[_Line], *, wide_tables: bool) -> list[
         and line.context is not _Context.FRONT_MATTER
         and "://" not in line.text
         and not (wide_tables and line.text.startswith("|"))
+    ]
+
+
+def _globs(lines: Iterable[_Line]) -> list[tuple[int, str]]:
+    """The globs of a rules file's `paths`, each with its line number."""
+    return [
+        (line.number, match.expand(r"\1"))
+        for line in lines
+        if line.context is _Context.FRONT_MATTER and (match := _GLOB_LINE.fullmatch(line.text)) is not None
     ]
 
 
