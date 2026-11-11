@@ -4,6 +4,7 @@ paths:
   - "tests/**/*.py"
   - "benchmarks/**/*.py"
   - "examples/**/*.py"
+  - "tools/**/*.py"
 ---
 
 # Typing – checker limitations (observed)
@@ -68,3 +69,18 @@ Ignored now:
   (`reply: tuple[B, BaseException | None, str]` in `strom._runtime.process_backend`, 2026-11-11).
 - An except clause's name is deleted at its end: reusing it later in the function is an error in mypy ("Assignment to
   variable outside except: block"); name the other value differently (2026-11-11).
+- `--disallow-any-expr` in the tools (`tools/`, 2026-11-11), where the standard library is typed with `Any`:
+  - an attribute of `argparse.Namespace`, a group of `re.Match` (`str | Any`), `sys.stdin.read()` (`str | Any`), the
+    parts of `re.split`: assign to an annotated variable (`runs: int = args.runs`); `match.expand(r"\g<file>")` gives a
+    `str` directly, `re.finditer` with `expand` replaces `re.findall`;
+  - `json.loads`: an annotated variable of a `TypedDict` for a format the tool trusts, else `object`, narrowed with
+    `strom_tools.json_objects` (`isinstance(value, dict)` narrows `object` to `dict[Any, Any]`); `tomllib.loads` returns
+    `dict[str, Any]`, which no `TypedDict` takes: `object` as well;
+  - a list or dict literal passed to a parameter typed `Any` (`json.dumps`, `choices=` of argparse) is inferred with
+    `Any`: assign it to a variable first; a lambda as `key=` of `sorted` likewise: a named function;
+  - `functools.cache` as a decorator is an expression with `Any`; `x ** 0.5` is `Any` (`math.sqrt`).
+- A line `# /// script` of its own makes a file a PEP 723 script for ty, also inside a string literal: ty then resolves
+  the file's imports against no path of the project (2026-11-11: `tests/tools/test_example_scripts.py` builds the header
+  it tests from a list of lines).
+- ty has no `__name__` on a value typed `Callable[...]` (mypy and pyright have): `getattr(handler, "__name__", ...)`
+  assigned to an annotated variable (`strom_tools.hooks.dispatcher`, 2026-11-11).

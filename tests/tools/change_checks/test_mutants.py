@@ -1,0 +1,83 @@
+from pathlib import Path
+
+import pytest
+from tool_helpers import commit, git, write
+
+from strom_tools.change_checks.mutants import Bug, Patch, Replace, Trial, Verdict, _inject, try_bug, verdict
+from strom_tools.change_checks.revisions import Commit, WorkingTree
+from strom_tools.tool_error import ToolError
+from strom_tools.workspace.process_groups import DetachedRun
+from strom_tools.workspace.repository import Repository
+
+PASSED = DetachedRun(0, "", "")
+
+
+@pytest.mark.parametrize(
+    ("trial", "expected"),
+    [
+        (Trial(PASSED, DetachedRun(1, "", "")), Verdict.CAUGHT),
+        (Trial(PASSED, PASSED), Verdict.MISSED),
+        (Trial(PASSED, DetachedRun(None, "", "")), Verdict.HUNG),
+        (Trial(PASSED, DetachedRun(2, "", "")), Verdict.NONE),
+        (Trial(DetachedRun(1, "", ""), None), Verdict.NONE),
+        (Trial(DetachedRun(None, "", ""), None), Verdict.NONE),
+    ],
+)
+def test_the_verdict_follows_from_the_two_runs(trial: Trial, expected: Verdict) -> None:
+    assert verdict(trial) == expected
+
+
+@pytest.fixture
+def doubling(repository: Repository) -> Repository:
+    """A repository with a library of one function and a test of it."""
+    write(repository, "src/strom/__init__.py", "def double(x: int) -> int:\n    return 2 * x\n")
+    write(repository, "tests/test_double.py", "import strom\n\n\ndef test_double():\n    assert strom.double(2) == 4\n")
+    write(repository, "pyproject.toml", '[tool.pytest.ini_options]\ntestpaths = ["tests"]\n')
+    commit(repository)
+    return repository
+
+
+def test_inject_replaces_the_one_occurrence(doubling: Repository) -> None:
+    _inject(doubling.root, Replace("src/strom/__init__.py", "2 * x", "3 * x"))
+    assert (doubling.root / "src/strom/__init__.py").read_text() == "def double(x: int) -> int:\n    return 3 * x\n"
+
+
+@pytest.mark.parametrize(("old", "times"), [("4 * x", 0), ("x", 2)])
+def test_inject_refuses_a_text_that_does_not_occur_once(doubling: Repository, old: str, times: int) -> None:
+    with pytest.raises(ToolError, match=rf"OLD occurs {times} times in src/strom/__init__.py, not once"):
+        _inject(doubling.root, Replace("src/strom/__init__.py", old, "y"))
+    assert "2 * x" in (doubling.root / "src/strom/__init__.py").read_text()
+
+
+def test_inject_applies_a_patch(doubling: Repository, tmp_path: Path) -> None:
+    write(doubling, "src/strom/__init__.py", "def double(x: int) -> int:\n    return 3 * x\n")
+    patch = tmp_path / "bug.patch"
+    patch.write_text(git(doubling, "diff") + "\n")
+    git(doubling, "checkout", "--", "src")
+    _inject(doubling.root, Patch(patch))
+    assert "3 * x" in (doubling.root / "src/strom/__init__.py").read_text()
+
+
+@pytest.mark.parametrize(
+    ("bug", "expected"),
+    [
+        (Replace("src/strom/__init__.py", "2 * x", "3 * x"), Verdict.CAUGHT),
+        (Replace("src/strom/__init__.py", "2 * x", "x + x"), Verdict.MISSED),
+    ],
+)
+def test_a_bug_is_tried_in_a_copy(doubling: Repository, tmp_path: Path, bug: Bug, expected: Verdict) -> None:
+    trial = try_bug(doubling, bug, WorkingTree(), ["-q"], 120, tmp_path / "copy")
+    assert verdict(trial) == expected
+    assert trial.clean.returncode == 0
+    assert "2 * x" in (doubling.root / "src/strom/__init__.py").read_text(), "the repository is unchanged"
+    assert not (doubling.root / ".pytest_cache").exists()
+
+
+def test_tests_that_fail_without_the_bug_give_no_verdict(doubling: Repository, tmp_path: Path) -> None:
+    """The working tree's test fails; the committed one, taken with `tests_from`, passes."""
+    write(doubling, "tests/test_double.py", "def test_double():\n    assert False\n")
+    bug = Replace("src/strom/__init__.py", "2 * x", "3 * x")
+    failing = try_bug(doubling, bug, WorkingTree(), ["-q"], 120, tmp_path / "copy")
+    assert failing.mutant is None and failing.clean.returncode == 1
+    assert verdict(failing) == Verdict.NONE
+    assert verdict(try_bug(doubling, bug, Commit("HEAD"), ["-q"], 120, tmp_path / "old")) == Verdict.CAUGHT

@@ -897,11 +897,13 @@ environment carries no example's dependencies and examples may pin different ver
 
 Scripts in `bin/` for the mechanical parts of the Process (A/B benchmarks, typing and test-ID snapshots, injected bugs
 in a temporary copy, run detached with a timeout), the steps as the project skill `validate-change`; typing and test-ID
-diffs against a revision (`--against REV`, checked in a temporary copy) besides saved snapshots; the hook `ruff_hook.py`
-leaves the rules a half-done edit breaks (F401, F811, F821, F822, F841; 2026-11-06: F821 alone blocked 186 times in four
-sessions) to the end of the turn, when it checks every changed Python file (also those changed by commands) with all
-rules, and leaves a file outside the repository as it is (2026-11-11); `:index` as a revision (the staged state) instead
-of a snapshot commit (the jail has no git identity)
+diffs against a revision (`--against REV`, checked in a temporary copy) besides saved snapshots; the edit hook
+(`strom_tools.hooks.python_fixes`) leaves the rules a half-done edit breaks (F401, F811, F821, F822, F841; 2026-11-06:
+F821 alone blocked 186 times in four sessions) to the end of the turn, when it checks every changed Python file (also
+those changed by commands) with all rules, and leaves a file outside the repository as it is (2026-11-11); `:index` as a
+revision (the state the user staged, see Index) beside commits; a mutant's test runs write no bytecode (2026-11-11: a
+bug as long as the text it replaces, injected within the second of the file's modification time, ran from the bytecode
+of the run without it and counted as `missed`; the first test of `bin/mutant.py` found it)
 
 **Rejected**
 
@@ -1004,7 +1006,8 @@ commit hook installs it. The commit hook, the Claude Code hooks and `bin/rename.
 ## Docs check
 
 `bin/check_docs.py` (in `make lint`) accepts a cited path or library name only if it is tracked (2026-11-11): a clone
-has only what is tracked, so a doc that cites a new file fails until the file is added (`git add`: the check says so)
+has only what is tracked, so a doc that cites a new file fails until the user adds the file (`git add`: the check says
+so; Claude leaves the index alone, see Index)
 
 **Rejected**
 
@@ -1013,6 +1016,30 @@ has only what is tracked, so a doc that cites a new file fails until the file is
 - `git add -N` for a new file (with an intent-to-add entry `git stash create`, the baseline of `bin/ab.py`, fails, and
   the revision `:index` gets an empty file)
 - the stricter check only in the commit hook (a second definition of lint, see Checks)
+
+## Index
+
+The index is the user's (2026-11-11): Claude neither stages nor unstages. The user keeps a state staged and compares
+Claude's changes with it (`git diff`, and the revision `:index` of the scripts in `bin/`); what needs staging is a
+command at the end of a report (`CLAUDE.md`, Process). Consequences: a new file that a doc cites keeps `make lint`
+failing until the user stages it; a file is deleted without `git rm`; a baseline that Claude needs is a commit made
+beside the index (`.claude/rules/tooling.md`). The tools keep to it: `strom_tools.workspace.git_files` runs no git
+command that changes the index (tested); `bin/rename.py` moves a file in the working tree only and prints the `git add`
+for the two paths; the Stop hook does not block Claude for a citation that is only untracked, which Claude could not
+fix, but tells the user, once per set of such citations (`strom_tools.hooks.docs_fixes`). A `deny` rule for the staging
+commands in `.claude/settings.json` enforces it for Claude's own commands; the user writes that file
+
+**Rejected**
+
+- Claude staging new files so that the docs check passes (until 2026-11-11, by the rules of that time: a session staged
+  all its work with `git add -A`, and the user could no longer tell it from what had been staged before)
+- Claude staging a version as a baseline for `--against :index` (the same; and the jail's missing git identity, the
+  reason at the time, does not stop `git commit-tree` with the identity in the environment)
+- `git mv` for a tracked file that `bin/rename.py` moves (until 2026-11-11: it staged the move, and `:index` then held
+  the new path with the old contents; git finds a move by content once both paths are staged)
+- the Stop hook blocking for an untracked citation (once per turn, for what only the user can change), or telling the
+  user at every stop
+- the docs check accepting untracked files outside the commit hook (a second definition of lint, see Docs check)
 
 ## Agent docs
 
@@ -1049,10 +1076,11 @@ and simplicity (the user had to ask for that pass in four sessions); a report en
 first when the repository is not in the state the user describes (`CLAUDE.md`); findings are implemented a group per
 session, and the Stop hook says when a session's context was summarised (one session reached 23 MB with two summaries
 and two stops at the usage limit); the Stop hook formats the changed docs with mdformat and runs `bin/check_docs.py`
-(`docs_hook`; one session ran the formatter by hand twelve times); `bin/ab.py --cpus` pins a comparison, and each of its
-runs says how long the rest takes; `bin/rename.py` moves a file with its imports and citations; tests on 3.14t run
-through `tox -e 3.14t -- ARGS`; the retrospective reads its data with `bin/sessions.py friction --since-retro --details`
-from a friction log whose lines are increments (the script's docstring)
+(`strom_tools.hooks.docs_fixes`; one session ran the formatter by hand twelve times); `bin/ab.py --cpus` pins a
+comparison, and each of its runs says how long the rest takes; `bin/rename.py` moves a file with its imports and
+citations; tests on 3.14t run through `tox -e 3.14t -- ARGS`; the retrospective reads its data with
+`bin/sessions.py friction --since-retro --details` from a friction log whose lines are increments (the script's
+docstring)
 
 **Rejected**
 
@@ -1074,6 +1102,77 @@ from a friction log whose lines are increments (the script's docstring)
 - a retrospective after every session (cost without friction)
 - a scheduled cloud agent (can't read the local transcripts)
 - mutmut-style generated checks for docs (the references are explicit, a plain existence check suffices)
+
+## Tool package
+
+The development tools are one package, `strom_tools`, in a source root of its own (`tools/`), with the library's
+conventions and checker settings and a test module per module (`tests/tools/`); the scripts in `bin/` and the hook
+command `.claude/hooks/dispatch.py` are wrappers of a few lines that keep their paths (2026-11-11). The layers, what
+only the entry points may do and how a tool is added: the package's docstring and `ARCHITECTURE.md`, Tools;
+`tests/tools/test_structure.py` checks the imports (standard library only, one way between the layers), that only the
+entry points read arguments, print and exit, and that every wrapper is the template. Before, the scripts were untested,
+imported a helper module and each other through `sys.path`, and each computed the repository's root itself, so that no
+function could run on a test repository.
+
+Probed and measured (2026-11-11): setuptools ships every package of `src/` in the wheel; with `pythonpath = ["src"]` the
+tox envs of a Python version import the working tree's `strom` instead of the installed one, with `["tools"]` only the
+tools come from the working tree. mypy's `disallow_any_expr` found 91 expressions in the scripts (attributes of
+`argparse.Namespace`, `json.loads`, groups of `re.Match`): they end at the commands, which assign each argument to an
+annotated variable, and in `strom_tools.json_objects`. The outputs of the scripts and of the hook command on recorded
+events were the same before and after, apart from `--help`, which now shows each command's docstring. The hook command
+for a Bash event: 60 ms before, 62 ms after (medians of 25 interleaved runs; `traceback` is imported only when a handler
+fails, and `typing`, which `json_objects` imports for `TypeIs`, costs about 3 ms). The suite: 494 tests in 11.6 s before
+(one run), 725 in 9 to 13 s after (three runs of the parallel suite). The first test of the mutants found a wrong
+verdict (Change checks).
+
+What the tools start is run by their tests for real, on projects a test writes: the three checkers, pytest-benchmark
+(one run per side of a comparison whose metric is a constant of each revision's library; skipped in the tox envs of a
+Python version, which lack the plugin) and uv with example scripts that have no dependencies, in a cache of the test (no
+network, nothing left in the user's cache). Only `make examples` and `make type` run examples with dependencies.
+
+A command that could not run exits with 4, `DID_NOT_RUN` in `strom_tools.commands.command_line` (2026-11-11): wrong
+arguments, a `ToolError` or an exception, which is still printed with its traceback. Before, these were 2, 1 and 1: for
+`bin/mutant.py` the verdicts `hung` and `missed`, and for the scripts that compare lines "they differ".
+
+The import order of the library's packages is checked like that of the tools (`tests/test_packages.py`, 2026-11-11): the
+layers of `ARCHITECTURE.md`, the groups of `_runtime`, no metrics in the runtime, no runtime in the reference semantics;
+a break injected for each was caught by its test.
+
+A note beside a block stays as it is (2026-11-11): both are printed, and the hooks reference says the JSON is read with
+exit code 2 too (`strom_tools.hooks.hook_events`; not yet observed, `docs/todo.md`).
+
+**Rejected**
+
+- the package beside `strom` in `src/` (a `packages.find` exclusion to keep it out of the wheel; its tests either skip
+  in the tox envs of a Python version or make them test the working tree's library; `src/` no longer "the library" for
+  `library_copy`, the docs check and the docs)
+- `bin/` as the package, with `pythonpath = ["bin"]` (a script stays module and command in one; top-level modules named
+  `check`, `sessions` and `rename` on the import path of the test run; the hooks keep importing through `sys.path`)
+- a module per tool with its `main` in it (a hook that needs a tool's core imports its command line; "only `main`
+  prints" is a convention no import rule can check)
+- one command `python -m strom_tools NAME` instead of the scripts (every citation, skill and the permission rule for
+  `bin/` in `.claude/settings.json` change; possible later, a command is a function `main(argv)`)
+- a uv workspace member or an installed dev dependency for the tools (a changed dev group makes every example's lock
+  stale)
+- the repository root on the import path with a top-level package (`tests`, `bin` and `benchmarks` importable too)
+- tool tests beside the tools (a second test tree with its own configuration and Hypothesis profiles)
+- a `conftest.py` in `tests/tools/` (mypy: "Duplicate module named conftest" without packages; the fixture is in
+  `tests/conftest.py`)
+- git and make injected into the tools as objects (one real implementation each: a test makes a repository in a
+  temporary directory, with a Makefile whose targets record their calls)
+- the library's pyright rules at the top level instead of once more for `tools/` (108 diagnostics in `tests/` and
+  `benchmarks/`, 71 of them `reportUnknownLambdaType`: a change to the tests' standards)
+- `functools.cache` for what the docs check reads once (its decorator is an expression with `Any`; and a cache of the
+  process outlives the repository of a test: the memo is a field of `Known`)
+- mypy strict without `disallow_any_expr` for the tools (`Any` from `json.loads` flowed through the transcript readers
+  unnoticed)
+- exit code 2 for "did not run", as diff and grep have it, with the verdicts of `bin/mutant.py` renumbered (its codes
+  are cited by the skill `validate-change` and learned; 4 is free in every command, and pytest uses it for a usage error
+  too)
+- keeping the traceback's exit code 1 for an exception in a command (a crash of `bin/mutant.py` read as `missed`)
+- one JSON object with `"decision": "block"` for a block beside a note (the path with exit code 2 and stderr is the one
+  the friction count knows from the transcripts, and the reference says the note is read beside it)
+- examples with dependencies in the tests (the network, and minutes for their environments)
 
 ## Test tools for users
 

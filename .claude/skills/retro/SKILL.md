@@ -17,9 +17,9 @@ description: Retrospective of past Claude Code sessions on strom - find friction
    - work redone by hand that a script would do (frequent commands, throwaway scripts in the scratchpad),
    - hook blocks and tool errors with a common cause, long runs that hit a timeout,
    - docs that went stale (a check in `bin/check_docs.py` could catch the kind).
-2. **Compare** with what exists: `CLAUDE.md`, `.claude/rules/`, the skills, `.claude/hooks/` (`dispatch.py` lists them),
-   `bin/`, and the "Agent docs", "Change checks" and "Self-improvement" sections of `docs/decisions.md` (rejected
-   proposals stay rejected without a new reason).
+2. **Compare** with what exists: `CLAUDE.md`, `.claude/rules/`, the skills, the hooks (`strom_tools.hooks.dispatcher`
+   lists them), `bin/`, and the "Agent docs", "Change checks" and "Self-improvement" sections of `docs/decisions.md`
+   (rejected proposals stay rejected without a new reason).
 3. **Report** a numbered list (skill `review`, Output): per finding the evidence (sessions, counts), the cause and the
    fix, where it goes by `.claude/rules/docs.md`. Prefer enforcing (a hook, a check in `make lint`, a script) over
    another instruction; keep `CLAUDE.md` under its size limit.

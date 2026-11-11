@@ -36,6 +36,13 @@ Conventions for tests: `ARCHITECTURE.md`. How a change to tests is checked (coll
   suite (`bin/mutant.py … -- -q -n auto`) before writing a test for it (2026-11-11: a check run also after an error
   passed `-k product` in `test_streaming.py`, whose failing products have one input, and failed
   `test_skipped_tasks_do_not_end_a_stream_early` in `tests/interpreters/test_offloaders.py`).
+- The tests have no packages (no `__init__.py`): pytest imports a test module by its base name, so that name is unique
+  in `tests/` (`tests/tools/hooks/test_hook_events.py` beside `tests/metrics/test_events.py`), and mypy takes a second
+  `conftest.py` as a duplicate module: fixtures of a sub-directory go into `tests/conftest.py`, helpers into a module
+  beside `helpers.py` (`tool_helpers.py`), which all three checkers find (2026-11-11).
+- Tool tests (`tests/tools/`) run git and make in a repository of their own (the fixture `repository`), never in this
+  one, and name made-up paths in what they write (a module `shards` in a package `_parts` of the library that does not
+  exist): `bin/rename.py` rewrites every text that cites a module it moves, a test's fixture too (2026-11-11).
 
 ## Benchmarks
 

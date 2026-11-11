@@ -24,12 +24,15 @@ read them when working there): `typing.md` (checker limitations), `tests.md` (te
   hook. Scripts only for generated or mechanical changes across many files (renames and moved modules: `bin/rename.py`).
   Read files with Read rather than `cat`/`sed -n`: Claude Code loads `.claude/rules` only then (a hook catches Bash
   reads too).
+- The index is the user's: never stage or unstage (`git add`, `git rm`, `git mv`, `git reset`, `git restore --staged`).
+  The user keeps a state staged and compares Claude's changes with it (`git diff`). What needs staging (a new file that
+  a doc cites, `.claude/rules/tooling.md`) is a command for the user at the end of the report.
 - IDE diagnostics that arrive after edits lag behind multi-file changes; only `make type` counts.
 - Long runs only when the user asks: `make bench`, the suite run serially. Otherwise `make test` (parallel), benchmarks
   with `bin/ab.py -- -k …` and `BENCH_SCALE`, in the background.
 - Reviews: skill `review`; plans: skill `plan` (a revised plan is self-contained, never mentions earlier versions).
-- A report ends with what is left: the open findings or tasks by ID, and the commands the user has to run (commit, push,
-  copying a prepared file).
+- A report ends with what is left: the open findings or tasks by ID, and the commands the user has to run (staging,
+  commit, push, copying a prepared file).
 
 **Improving this setup**
 
@@ -37,8 +40,9 @@ read them when working there): `typing.md` (checker limitations), `tests.md` (te
   `.claude/rules` file in the same change, dated. A user correction of how you work: propose the line for `CLAUDE.md`, a
   rule or a skill, and add it when the user agrees.
 - Work done twice by hand (a throwaway script, the same command sequence): propose a script in `bin/`.
-- Prefer enforcing (hook, check in `make lint`) over another instruction. Hooks: `.claude/hooks/dispatch.py` routes
-  every event, so change the handler modules, not `.claude/settings.json` (Claude can't write it).
+- Prefer enforcing (hook, check in `make lint`) over another instruction. Hooks: `.claude/hooks/dispatch.py` runs
+  `strom_tools.hooks.dispatcher` for every event, so change its table and the handler modules, not
+  `.claude/settings.json` (Claude can't write it).
 - Friction (hook blocks, errors, rejections, interrupts) is logged per session in `.checks/friction.jsonl`; the
   SessionStart hook suggests the skill `retro` when it piles up.
 
@@ -67,11 +71,13 @@ git push                       # the pre-push hook: make check
 `collect_ids.py` (collected test IDs), `mutant.py` (tests against an injected bug), `run_examples.py`, `check.py`
 (`make check` in one line per target), `check_docs.py` (paths and names the docs cite are tracked; in `make lint`),
 `rename.py` (an identifier in code or a file that moves, with what the docs say of it), `sessions.py` (past Claude Code
-sessions: list, prompts, search, friction). Usage and contract: each one's docstring (`--help`); they run with the
-venv's Python (`uv run --frozen python`, or the activated venv), keep snapshots in `.checks/` and share `bin/_tools.py`;
-a revision `:index` is the staged state. Claude Code hooks: the handlers `.claude/hooks/dispatch.py` lists (`make fix`
-and the lint of edited and changed Python files and of changed docs, rules for Bash reads, the friction log, a note when
-the context was summarised).
+sessions: list, prompts, search, friction). Usage and contract: `--help`; they run with the venv's Python
+(`uv run --frozen python`, or the activated venv) and keep snapshots in `.checks/`; a revision `:index` is the staged
+state; exit code 4 means the script did not run (wrong arguments, an error), never an outcome. Each is a wrapper of its
+command in `strom_tools` (`tools/`), the package of the development tools, with the library's conventions and checkers
+and its tests in `tests/tools/`: its guide is the package's docstring (`ARCHITECTURE.md`, Tools). Claude Code hooks: the
+handlers `strom_tools.hooks.dispatcher` lists (`make fix` and the lint of edited and changed Python files and of changed
+docs, rules for Bash reads, the friction log, a note when the context was summarised).
 
 ## Docs
 

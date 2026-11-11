@@ -22,6 +22,17 @@
       "Bash(git log:*)",
       "Bash(git show:*)"
     ],
+    "deny": [
+      "Bash(git add:*)",
+      "Bash(git stage:*)",
+      "Bash(git rm:*)",
+      "Bash(git mv:*)",
+      "Bash(git reset:*)",
+      "Bash(git restore --staged:*)",
+      "Bash(git restore -S:*)",
+      "Bash(git update-index:*)",
+      "Bash(git commit:*)"
+    ],
     "ask": [
       "Bash(make bench:*)"
     ]

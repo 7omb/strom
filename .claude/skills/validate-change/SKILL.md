@@ -1,6 +1,6 @@
 ---
 name: validate-change
-description: The checks a change to strom needs before it is reported done (CLAUDE.md, Process) - reproduce the problem first, then the suite, interleaved A/B benchmarks, typing diffs of mypy, pyright and ty against HEAD, test-ID diffs for restructured tests, an injected bug for changed tests and a read of the whole diff for structure and simplicity. Use when starting a change to src/, tests/, benchmarks/, examples/ or bin/, and before reporting it done.
+description: The checks a change to strom needs before it is reported done (CLAUDE.md, Process) - reproduce the problem first, then the suite, interleaved A/B benchmarks, typing diffs of mypy, pyright and ty against HEAD, test-ID diffs for restructured tests, an injected bug for changed tests and a read of the whole diff for structure and simplicity. Use when starting a change to src/, tests/, benchmarks/, examples/, bin/ or tools/, and before reporting it done.
 allowed-tools: Bash(git status:*), Bash(git diff:*)
 ---
 
@@ -20,11 +20,13 @@ Uncommitted changes now:
 | Library (`src/`) | 1, 2, 3, 4, 7; 6 if tests changed |
 | Tests only | 1, 2, 4, 6, 7; 5 if they were moved, renamed or split |
 | Benchmarks | 2, 4, 7; their results with `make bench-results` |
-| `bin/`, examples, config | 2, 4, 7, plus running what changed on a case it must handle |
+| Tools (`tools/`, `bin/`, hooks) | 1, 2, 4, 7; 6 if tests changed; a real run of the changed command |
+| Examples, config | 2, 4, 7, plus running what changed on a case it must handle |
 | Docs only (`*.md`, docstrings) | `make lint` (`bin/check_docs.py`: the paths and names they cite are tracked) |
 
 `REV` below is the revision the change starts from: `HEAD` while it is uncommitted, else e.g. `main~2`; `:index` is the
-staged state (stage a version to compare later edits with, no commit needed).
+state the user staged (compare with it; never stage a version yourself: the index is the user's, `CLAUDE.md`, Process).
+A baseline of an uncommitted tree is a commit made beside the index (`.claude/rules/tooling.md`).
 
 ## Steps
 
@@ -50,11 +52,13 @@ staged state (stage a version to compare later edits with, no commit needed).
 
    - `uv run --frozen python bin/mutant.py --replace src/strom/<module>.py "<old>" "<new>" -- -x -q -k <tests>`
    - `... --tests-from REV` for the old tests.
+   - a tool: `--replace tools/strom_tools/<module>.py ...`, with its test module instead of `-k`.
 
    Outcomes: `caught` is the goal; `missed` means the test does not check what it claims; `hung` needs a narrower `-k`;
-   exit code 3 (no verdict) means the tests fail without the bug too. Typical bugs: a concurrency limit ±1, an end of
-   stream or a close left out, a count off by one. A failure flag shared by all runs hangs and says nothing: inject a
-   bug that a narrow `-k` can catch.
+   exit code 3 (no verdict) means the tests fail without the bug too; exit code 4, here and for every script in `bin/`,
+   that the script did not run (wrong arguments, a text that does not occur once, an exception). Typical bugs: a
+   concurrency limit ±1, an end of stream or a close left out, a count off by one. A failure flag shared by all runs
+   hangs and says nothing: inject a bug that a narrow `-k` can catch.
 
 7. **Read the whole diff** once as its reviewer (`git diff REV`, and the new files), before the user has to ask for it:
    with the criteria Structure, Simplicity and Consistency of the skill `review`, and for what past changes had to be

@@ -48,6 +48,7 @@ default-groups = ["dev", "bench"]  # so `uv sync` (direnv) keeps the bench group
 [tool.pytest.ini_options]
 minversion = "9.0"
 testpaths = ["tests"]
+pythonpath = ["tools"]  # the development tools (strom_tools): not installed, tested in tests/tools
 addopts = ["-ra", "--strict-markers", "--strict-config"]
 xfail_strict = true
 asyncio_mode = "auto"  # pytest-asyncio: every `async def` test and fixture runs on an event loop
@@ -56,7 +57,7 @@ filterwarnings = ["ignore:cpu_backend='thread' with the GIL enabled"]
 
 [tool.coverage.run]
 branch = true
-source = ["strom"]
+source = ["strom", "strom_tools"]
 
 [tool.coverage.report]
 show_missing = true
@@ -64,15 +65,16 @@ show_missing = true
 [tool.mypy]
 strict = true
 enable_error_code = ["explicit-override"]
-files = ["src", "tests", "benchmarks", "bin"]  # examples: each in its own environment (bin/run_examples.py --type)
+files = ["src", "tests", "benchmarks", "bin", "tools"]  # examples: each in its own environment (`make type`)
 
 [[tool.mypy.overrides]]
-module = ["strom", "strom.*"]
+module = ["strom", "strom.*", "strom_tools", "strom_tools.*"]
 disallow_any_expr = true
 
 [tool.pyright]
 pythonVersion = "3.14"
-include = ["src", "tests", "benchmarks", "bin"]  # examples: see [tool.mypy]
+include = ["src", "tests", "benchmarks", "bin", "tools"]  # examples: see [tool.mypy]
+extraPaths = ["tools"]  # the wrappers in bin and the tests import strom_tools from there
 venvPath = "."
 venv = ".venv"
 enableTypeIgnoreComments = false  # `# type: ignore` is mypy's; pyright's own is `# pyright: ignore[rule]`
@@ -119,12 +121,53 @@ reportUnsupportedDunderAll = "error"
 reportUnusedExpression = "error"
 reportMatchNotExhaustive = "error"
 
+# The tools with the library's rules: the same list (an environment can't refer to another one's; at the top
+# level the rules would hold for the tests too, see docs/decisions.md, Tool package).
+[[tool.pyright.executionEnvironments]]
+root = "tools"
+reportPrivateUsage = "error"
+reportUnusedClass = "error"
+reportUnusedFunction = "error"
+strictListInference = true
+strictSetInference = true
+strictDictionaryInference = true
+reportMissingTypeStubs = "error"
+reportUnusedImport = "error"
+reportUnusedVariable = "error"
+reportDuplicateImport = "error"
+reportWildcardImportFromLibrary = "error"
+reportUntypedFunctionDecorator = "error"
+reportUntypedClassDecorator = "error"
+reportUntypedBaseClass = "error"
+reportUntypedNamedTuple = "error"
+reportTypeCommentUsage = "error"
+reportConstantRedefinition = "error"
+reportDeprecated = "error"
+reportInconsistentConstructor = "error"
+reportInvalidStringEscapeSequence = "error"
+reportUnknownParameterType = "error"
+reportUnknownLambdaType = "error"
+reportMissingParameterType = "error"
+reportMissingTypeArgument = "error"
+reportInvalidTypeVarUse = "error"
+reportUnnecessaryIsInstance = "error"
+reportUnnecessaryCast = "error"
+reportUnnecessaryContains = "error"
+reportAssertAlwaysTrue = "error"
+reportSelfClsParameterName = "error"
+reportInvalidStubStatement = "error"
+reportIncompleteStub = "error"
+reportUnsupportedDunderAll = "error"
+reportUnusedExpression = "error"
+reportMatchNotExhaustive = "error"
+
 [tool.ty.environment]
 python-version = "3.14"
 python = ".venv"  # as pyright's `venv`: not the active one (a tox env runs `make type` with its own active)
+extra-paths = ["tools"]  # as pyright's `extraPaths`
 
 [tool.ty.src]
-include = ["src", "tests", "benchmarks", "bin"]  # examples: see [tool.mypy]
+include = ["src", "tests", "benchmarks", "bin", "tools"]  # examples: see [tool.mypy]
 
 [tool.ty.rules]
 unused-ignore-comment = "error"  # a warning would pass `ty check`: an ignore expires with the bug it was for
@@ -132,6 +175,7 @@ unused-ignore-comment = "error"  # a warning would pass `ty check`: an ignore ex
 [tool.ruff]
 target-version = "py314"
 line-length = 120
+src = [".", "src", "tools"]  # the roots of first-party imports: the default and the tools
 
 [tool.ruff.lint]
 select = ["ANN", "B", "E", "F", "I", "PLE", "S", "UP", "W"]
@@ -145,7 +189,8 @@ ignore = [
     "S603",  # subprocesses run sys.executable with fixed arguments
 ]
 "benchmarks/**" = ["S101"]  # assert is how pytest checks
-"bin/**" = [
-    "S603",  # runs sys.executable, git and the checkers with arguments of its own
-    "S607",  # git, pyright and ty from PATH (the dev shell)
+"tests/tool_helpers.py" = ["S607"]  # git from PATH, in repositories the tests make
+"tools/**" = [
+    "S603",  # runs sys.executable, git, make and the checkers with arguments of its own
+    "S607",  # git, make, uv, pyright and ty from PATH (the dev shell)
 ]

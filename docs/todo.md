@@ -92,3 +92,13 @@ Remove a task once it is done; decisions it led to go to `docs/decisions.md`.
   18 timed suite runs, interleaved, one took 39 s before and one 232 s after; 8079 seeded examples of one law evaluate
   in the same time on both trees, 0.4 s at most). Bound the fan-out of a generated example (its 1:n leaves, or the
   outputs per input).
+
+## Tooling
+
+- [ ] A Stop that one handler blocks while another one has a note (a context summary in a turn whose stop ruff or the
+  docs check block): the hook command prints both, and the hooks reference says the JSON is read beside exit code 2
+  (`strom_tools.hooks.hook_events`). Observe it once on a running session: whether the note shows at the blocked stop,
+  and again at the next one.
+- [ ] With the `deny` rule for the staging commands in `.claude/settings.json` (`docs/decisions.md`, Index): whether it
+  also stops the baseline recipe of `.claude/rules/tooling.md`, which runs `git add` on a scratch index
+  (`GIT_INDEX_FILE`). If so, that recipe becomes the baseline command of `docs/plans/retro-review.md`, S2.

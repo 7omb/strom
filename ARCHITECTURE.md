@@ -31,13 +31,14 @@ is public in one of them only; apart from `strom.testing`, they only re-export f
 | `tests/` | one test module per library module (layout: the docstring of `tests/conftest.py`) |
 | `benchmarks/benchmark.py` | pytest-benchmark benchmarks, each against a reference |
 | `examples/` | runnable examples, each a uv script with its own lock that checks its results (`bin/run_examples.py`) |
-| `bin/` | development scripts: checks of a change and the docs, A/B benchmarks, examples, renames, agent sessions |
+| `tools/` | `strom_tools`, the development tools (Tools, below); tested in `tests/tools/` |
+| `bin/` | a script per command of the tools: checks of a change and the docs, A/B benchmarks, renames, sessions |
 | `docs/` | `decisions.md`, `todo.md`, `plans/`, `research/` |
 
 ## Packages
 
 The private packages of `src/strom` by role, bottom-up: each imports only from those above it (see `docs/decisions.md`,
-Module structure). Terms: `GLOSSARY.md`.
+Module structure; `tests/test_packages.py` checks it). Terms: `GLOSSARY.md`.
 
 Module layout: packages by role (the layers below), modules inside a package by feature. A feature its consumers use (a
 backend, worker handles, `Pools`) is one module, or one sub-package, holding everything only it needs (the process
@@ -87,6 +88,23 @@ levels of its package). Module names: Naming.
 A streaming run first fuses the stage (`fused`, an optimisation pass); `start_streaming` starts its tasks and returns
 the queue for the run's inputs, which the runner only feeds. The reference semantics runs the stage unfused (the tests
 compare with it via `strom.testing.evaluate`).
+
+## Tools
+
+The development tools are a package of their own, `strom_tools` in `tools/`: what the scripts in `bin/` and the Claude
+Code hooks run (`.claude/hooks/dispatch.py`), each a wrapper of a few lines. It ships in no wheel, imports only the
+standard library (never `strom`: the hooks run without the venv, and a tool has to work while the library is broken) and
+follows the conventions below, with the library's checker settings. Its guide is the package's docstring
+(`tools/strom_tools/__init__.py`): the layers and their import order, and how a tool or a hook is added.
+
+- foundations: `tool_error` (`ToolError`, what a tool could not do), `json_objects` (JSON narrowed without `Any`)
+- `workspace`: the repository as a value (`Repository`), every call of git and of make, process groups
+- the tools, which import nothing of each other: `change_checks` (skill `validate-change`), `example_scripts`,
+  `docs_check`, `renames`, `sessions`
+- entry points: `hooks` (the handlers and their dispatcher) and `commands` (one per script); only they read arguments or
+  stdin, print and exit. Below them a function takes the repository, returns data and raises `ToolError`.
+
+`tests/tools/test_structure.py` checks the imports, the layers and the wrappers (`docs/decisions.md`, Tool package).
 
 ## Design notes
 
@@ -146,19 +164,20 @@ What the code doesn't show at a glance. `docs/decisions.md` refers to these sect
 
 **Code**
 
-- Everything is clean in mypy strict (the library also `disallow_any_expr`), pyright (default mode; the library strict
-  except the rules in `docs/decisions.md`) and ruff; the library also in ty. ty diagnostics in `tests/`: add none.
-  Checker limitations: `.claude/rules/typing.md`.
+- Everything is clean in mypy strict (the library and the tools also `disallow_any_expr`), pyright (default mode; the
+  library and the tools strict except the rules in `docs/decisions.md`) and ruff; the library and the tools also in ty.
+  ty diagnostics in `tests/`: add none. Checker limitations: `.claude/rules/typing.md`.
 - A false positive of one checker gets that checker's ignore comment on its line, with a dated entry in
   `.claude/rules/typing.md`; the code keeps the shape the other two accept. No code is shaped around a checker's bug: a
   shape stays when the bug is fixed, an ignore then fails the check.
 - No `Any`. Untyped third-party API: describe the used part as a small `Protocol` (`Benchmark` in
   `benchmarks/benchmark.py`).
 - No runtime type checks (the type checker's job); only value constraints types can't express.
-- Privacy by namespace (PEP 8): the private packages carry the `_`; inside them, a name another library module imports
-  has none, a name used only in its own module (or class) keeps it, also if tests use it. A definition used by one other
-  module only lives there, unless it is its module's entry point or belongs to a family defined together (e.g. the focus
-  algebra, the events). pyright's `reportPrivateUsage` checks it in `src/`.
+- Privacy by namespace (PEP 8): the private packages carry the `_` (the tools are no API: none of their packages does);
+  inside them, a name another library module imports has none, a name used only in its own module (or class) keeps it,
+  also if tests use it. A definition used by one other module only lives there, unless it is its module's entry point or
+  belongs to a family defined together (e.g. the focus algebra, the events). pyright's `reportPrivateUsage` checks it in
+  `src/` and `tools/`.
 - Functional style: stages are pure data, behaviour lives in module-level interpreter functions and in functions stored
   in the stages. A stage kind's only method rebuilds it (`Focused.with_focus`): it runs nothing.
 - An optional feature must cost nothing when it is off.
