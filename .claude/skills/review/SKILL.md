@@ -36,4 +36,6 @@ what the request names; when it names nothing, all of these:
 - More than about five findings: also write the list to `docs/plans/<topic>-review.md`, so that later sessions can
   resolve the IDs; delete it once its findings are done or rejected (rejections with a reason go to
   `docs/decisions.md`).
-- Change nothing in a review unless asked; the user picks the findings to implement.
+- Change nothing in a review unless asked; the user picks the findings to implement. Recommend a session per group of
+  findings (the file carries the IDs): a session that implements several groups outgrows its context, and after each
+  summary it reads the docs again.

@@ -124,7 +124,7 @@ def _within[O](use: ExitStack, items: Iterable[O]) -> Iterator[O]:
         yield from items
 
 
-def using[R, I, O](handle: WorkerHandle[R], fn: Callable[[R, I], Iterable[O]]) -> Using[I, O]:
+def using[R, I, O](handle: WorkerHandle[R], fn: Callable[[R, I], Iterable[O]]) -> Callable[[I], Iterable[O]]:
     """`fn` with the worker handle: a function of one input for a stage factory, e.g.
     `io_stage(using(db, rows))` with `def rows(engine: Engine, query: str) -> Iterator[Row]`.
 

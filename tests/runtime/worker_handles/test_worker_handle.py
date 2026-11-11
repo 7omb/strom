@@ -188,7 +188,7 @@ async def test_a_handle_needs_open_pools(journal: Journal) -> None:
 
 async def test_per_input_in_the_reference_on_the_event_loop_and_from_an_executor(journal: Journal) -> None:
     async with (
-        P.Pools.using(cpu=P.FromExecutor(factory=partial(ThreadPoolExecutor, 2)), io=P.Threads(workers=1)) as pools,
+        P.Pools.open_on(cpu=P.FromExecutor(factory=partial(ThreadPoolExecutor, 2)), io=P.Threads(workers=1)) as pools,
         P.worker_handle(journal, pools) as handle,
     ):
         reference = await meaning_async(P.io_stage(P.using(handle, tokens_of)), range(3))
@@ -235,7 +235,7 @@ def test_on_a_backend_without_shared_memory(journal: Journal) -> None:
     cpu, io = Pickling(), Pickling()
 
     async def run() -> list[str]:
-        async with P.Pools.using(cpu=cpu, io=io) as pools, P.worker_handle(journal, pools) as handle:
+        async with P.Pools.open_on(cpu=cpu, io=io) as pools, P.worker_handle(journal, pools) as handle:
             stage = P.io_stage(P.using(handle, tokens_of), concurrency=4) | P.cpu_stage(P.using(handle, partial_tokens))
             return await outputs_of(stage, range(10), pools)
 
@@ -268,8 +268,7 @@ async def test_a_run_agrees_with_the_reference(journal: Journal, name: str, cpu_
 
 async def test_using_names_the_function_and_the_handle(pools: P.Pools, journal: Journal) -> None:
     async with P.worker_handle(journal, pools, name="journal") as handle:
-        using = P.using(handle, tokens_of)
-        assert (using.fn_name, using.handle_name) == ("tokens_of", "journal")  # the stage repr: `test_model.py`
+        assert repr(P.io_stage(P.using(handle, tokens_of))) == "<Stage 'tokens_of' (tokens_of: io, using journal)>"
         assert repr(handle) == "<WorkerHandle 'journal'>"
     assert repr(handle) == "<WorkerHandle 'journal' (closed)>"
 

@@ -18,8 +18,9 @@ Tracked, not merely there: a clone has only what is tracked, so a doc that cites
 the file is added (`git add`); such a reference is printed with that hint.
 Spans with placeholders (`<topic>`, `...`, `…`), spaces, URLs, absolute or home paths (`/proc/…`, `~/`) are
 skipped, and so are code blocks and the lists under **Rejected** up to the next heading (`docs/decisions.md`
-cites old names there). Each missing reference is printed as `FILE:LINE: REF`, each long line as
-`FILE:LINE: N characters`; the exit code is 1 if there is any.
+cites old names there). So a doc names a file that is only planned without its path and extension (a module
+`shards` in `src/strom/_runtime/`) or with an ellipsis. Each missing reference is printed as `FILE:LINE: REF`
+with a hint, each long line as `FILE:LINE: N characters`; the exit code is 1 if there is any.
 """
 
 import ast
@@ -38,6 +39,7 @@ LIBRARY = "src"
 MAX_LINE = 120  # ruff's line-length and mdformat's wrap (`.mdformat.toml`)
 WIDE_TABLES = ROOT / "docs" / "research"
 UNTRACKED = " (untracked: `git add` it)"
+MISSING = " (not found; if it is only planned: its name without path and extension, or with `…`)"
 
 
 def main() -> int:
@@ -109,7 +111,7 @@ def check(file: Path) -> list[str]:
         for match in SPAN.finditer(line):
             reference = match.group(1).strip()
             if not SKIPPED.search(reference) and not cited(reference, directory, tracked()):
-                hint = UNTRACKED if cited(reference, directory, in_working_tree()) else ""
+                hint = UNTRACKED if cited(reference, directory, in_working_tree()) else MISSING
                 problems.append(f"{shown}:{number}: {reference}{hint}")
     return problems
 

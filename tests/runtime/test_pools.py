@@ -140,7 +140,7 @@ async def test_pools_open_takes_a_configuration() -> None:
         P.Pools(config)
 
 
-async def test_pools_using_takes_the_backends() -> None:
+async def test_pools_open_on_takes_the_backends() -> None:
     created: list[str] = []
 
     def io() -> ThreadBackend:  # any callable creating a backend
@@ -148,7 +148,7 @@ async def test_pools_using_takes_the_backends() -> None:
         return P.Threads(workers=2)()
 
     cpu = P.FromExecutor(factory=lambda: ThreadPoolExecutor(1))
-    async with P.Pools.using(cpu=cpu, io=io) as pools:
+    async with P.Pools.open_on(cpu=cpu, io=io) as pools:
         assert pools.config == P.PoolConfig(cpu=cpu, io=io)
         assert sorted(await outputs_of(P.io_stage(inc), [1, 2], pools)) == [2, 3]
         assert sorted(await outputs_of(P.io_stage(inc) | P.cpu_stage(inc), [1, 2], pools)) == [3, 4]
@@ -160,7 +160,7 @@ def test_thread_backend_with_the_gil_warns_at_the_callers_line() -> None:
         warnings.simplefilter("always")
         P.Pools.open(cpu_workers=1, io_workers=1, cpu_backend="thread")
         P.Pools.open(cpu_workers=1, io_workers=1, cpu_backend="process")
-        P.Pools.using(cpu=P.Threads(workers=1), io=P.Threads(workers=1))  # chosen explicitly: no warning
+        P.Pools.open_on(cpu=P.Threads(workers=1), io=P.Threads(workers=1))  # chosen explicitly: no warning
     expected = [__file__] if _gil_enabled() else []  # no warning on the free-threaded build
     assert [(w.category, w.filename) for w in record] == [(RuntimeWarning, f) for f in expected]
 

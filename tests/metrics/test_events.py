@@ -321,7 +321,7 @@ async def test_an_input_whose_pool_task_is_skipped_is_recorded_as_cancelled() ->
         raise Failure(item)
 
     events: list[Event] = []
-    async with P.Pools.using(cpu=P.Threads(workers=1), io=io_pool) as pools:
+    async with P.Pools.open_on(cpu=P.Threads(workers=1), io=io_pool) as pools:
         with run_error(Failure):
             await outputs_of(
                 P.io_stage(fail_once_both_queued, concurrency=2),

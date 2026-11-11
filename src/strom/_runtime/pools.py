@@ -61,7 +61,7 @@ _POOLS_CLOSED = "Pools is closed; create a new one"
 
 class Pools:
     """One backend per resource, created lazily from `config`; only inside `async with Pools.open(...)` (or
-    `Pools.using(...)`).
+    `Pools.open_on(...)`).
 
     Reusable across runs until the block ends; a closed `Pools` raises `RuntimeError` on any further
     use. Use a `Pools` within one event loop (several concurrent runs in it are fine); backends may
@@ -74,7 +74,7 @@ class Pools:
 
     def __init__(self, config: PoolConfig, opening: object = None) -> None:
         if opening is not _OPENING:  # only `_opened` constructs one: a `Pools` outside its block is never closed
-            raise TypeError("a Pools exists only inside `async with Pools.open(...)` or `Pools.using(...)`")
+            raise TypeError("a Pools exists only inside `async with Pools.open(...)` or `Pools.open_on(...)`")
         self.config: Final = config  # fixed: the backends are created from it
         self._cpu: Backend | None = None
         self._io: StreamingBackend | None = None
@@ -92,7 +92,7 @@ class Pools:
         """The pools for the `async with` block: `cpu_workers` processes (or threads) and `io_workers` threads;
         by default `default_cpu_workers()` and `default_io_workers()`.
 
-        Short for `Pools.using(cpu=Processes(...) or Threads(...), io=Threads(...))`. At the end of the
+        Short for `Pools.open_on(cpu=Processes(...) or Threads(...), io=Threads(...))`. At the end of the
         block, pool tasks not yet started are cancelled and running ones are waited for, in a thread: the
         event loop goes on meanwhile, and a cancelled exit still closes them. The configuration is checked
         here, at the call (its warning names the caller's line)."""
@@ -113,16 +113,16 @@ class Pools:
         return _opened(cls, PoolConfig(cpu=cpu, io=Threads(workers=io_workers, name="io")))
 
     @classmethod
-    def using(
+    def open_on(
         cls, *, cpu: Callable[[], Backend], io: Callable[[], StreamingBackend]
     ) -> AbstractAsyncContextManager[Self]:
         """The pools for the `async with` block, on the given backends: e.g.
-        `Pools.using(cpu=Processes(workers=8), io=Threads(workers=16))`; closing as for `Pools.open`."""
+        `Pools.open_on(cpu=Processes(workers=8), io=Threads(workers=16))`; closing as for `Pools.open`."""
         return _opened(cls, PoolConfig(cpu=cpu, io=io))
 
     @property
     def closed(self) -> bool:
-        """True after the `async with` block of `Pools.open` or `Pools.using`; a closed `Pools` can't be used."""
+        """True after the `async with` block of `Pools.open` or `Pools.open_on`; a closed `Pools` can't be used."""
         return self._closed
 
     def _cpu_backend(self) -> Backend:

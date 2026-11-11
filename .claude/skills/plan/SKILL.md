@@ -15,8 +15,10 @@ A plan lives in `docs/plans/<topic>.md`, linked from its task in `docs/todo.md`,
 2. **Analyse** the code it changes: every use of what changes (`grep`, `bin/rename.py OLD NEW` as a dry run for names),
    the tests and docs that cite it.
 3. **Design**: the problem, the design (several when they differ in trade-offs, with a recommendation), what it rejects
-   and why. Cite code by name, not by line number. A claim about runtime behaviour ("once per worker", "teardown runs at
-   shutdown") is checked with a probe script in the scratchpad before it goes into the plan; third-party packages via
+   and why. Cite code by name, not by line number; a file the plan only proposes by its name without path and extension
+   (a module `shards` in `src/strom/_runtime/`) or with an ellipsis: `bin/check_docs.py` fails on a path that does not
+   exist. A claim about runtime behaviour ("once per worker", "teardown runs at shutdown") is checked with a probe
+   script in the scratchpad before it goes into the plan; third-party packages via
    `uv run --frozen --with PKG python probe.py`.
 4. **Steps**: executable from top to bottom, each one leaving `make check` green, with the checks it needs (skill
    `validate-change`). Only the details needed to execute it.

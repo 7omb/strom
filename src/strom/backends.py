@@ -3,7 +3,7 @@
 A backend runs the pool tasks of one resource ("cpu" or "io") of a `Pools`; users choose one by passing a
 callable that creates it (e.g. `Threads(workers=8)`, or a function returning a backend of your own):
 
-    async with Pools.using(cpu=MyRemoteBackendConfig(...), io=Threads(workers=16)) as pools: ...
+    async with Pools.open_on(cpu=MyRemoteBackendConfig(...), io=Threads(workers=16)) as pools: ...
 
 A `Backend` ("cpu" only) implements `run(fn, arg)` and `aclose()`; a `StreamingBackend` (also "io") adds
 `affinity` to `run`, and `release(scope)`. Contract (see their docstrings):

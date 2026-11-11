@@ -54,7 +54,7 @@ async def test_a_pool_task_of_a_failed_run_is_skipped_in_its_worker(name: str) -
     RAN.clear()
     failed = FailureFlag()
     config = guard_backends(name)
-    async with P.Pools.using(cpu=config, io=config) as pools:
+    async with P.Pools.open_on(cpu=config, io=config) as pools:
         calls = _OnBackends(backends_of(pools), failed)
         assert await calls.cpu(ran, "before") == "before"
         failed.set()
@@ -73,7 +73,7 @@ async def test_a_failing_pool_task_sets_the_flag_where_its_worker_shares_the_run
     A worker without shared memory sets its copy; the run's flag is set by its failing step."""
     failed = FailureFlag()
     config = guard_backends(name)
-    async with P.Pools.using(cpu=config, io=config) as pools:
+    async with P.Pools.open_on(cpu=config, io=config) as pools:
         calls = _OnBackends(backends_of(pools), failed)
         with pytest.raises(Failure):
             await calls.cpu(fail_on_7, 7)
@@ -119,7 +119,7 @@ async def test_queued_pool_tasks_are_skipped_after_failure() -> None:
             raise ValueError("first fails")
         return [item]
 
-    async with P.Pools.using(cpu=P.Threads(workers=1), io=io_pool) as pools:
+    async with P.Pools.open_on(cpu=P.Threads(workers=1), io=io_pool) as pools:
         with run_error(ValueError, "^first fails"):
             await outputs_of(P.io_stage(first_fails, concurrency=8), range(8), pools)
     assert len(started) == 1  # after `with`: every pool task has run or was skipped
@@ -200,7 +200,7 @@ def test_an_iterator_stopped_early_is_closed_on_its_worker() -> None:
     io = Pickling(workers=2)
 
     async def first_output() -> int:
-        async with P.Pools.using(cpu=P.Threads(workers=1), io=io) as pools:
+        async with P.Pools.open_on(cpu=P.Threads(workers=1), io=io) as pools:
             async with P.stream(P.io_stage(itertools.count, buffer_size=1), [5], pools) as outputs:
                 async for out in outputs:
                     return out

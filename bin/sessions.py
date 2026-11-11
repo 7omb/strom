@@ -3,7 +3,7 @@
 Run:  python bin/sessions.py list [-n N]                  sessions (newest last): start, title, size, prompts
       python bin/sessions.py prompts SESSION              the user's prompts of a session (an id prefix)
       python bin/sessions.py search TERM [-n N] [--all]   the prompts (`--all`: also Claude's text) matching TERM
-      python bin/sessions.py friction [SESSION ...] [-n N] [--commands]
+      python bin/sessions.py friction [SESSION ...] [-n N] [--since-retro] [--details] [--commands]
                                                           friction per session (default: the last 5)
       python bin/sessions.py mark-retro                   records a retrospective in the friction log
 
@@ -13,13 +13,18 @@ reading is lenient. TERM is a case-insensitive regular expression.
 
 Friction counts what cost a session round trips: hook blocks (`hook_blocks`), tool errors other than
 rejections (`tool_errors`), tool calls the user or the permission check rejected (`rejected`), interrupts by
-the user (`interrupts`) and diagnostics the IDE attached after edits (`diagnostics`, often stale). With
-`--commands`, the most frequent Bash command beginnings, candidates for a script or a make target.
+the user (`interrupts`; the calls an interrupt cancels are part of it, no rejections) and diagnostics the IDE
+attached after edits (`diagnostics`, often stale). `--since-retro` takes the sessions that went on after the
+last retrospective, and of each only what came after it; `--details` lists each piece of friction, the tool
+call and its answer; `--commands` the most frequent Bash command beginnings, candidates for a script or a make
+target.
 
-The friction log `.checks/friction.jsonl` gets one line per ended session (written by the SessionEnd hook,
-`.claude/hooks/friction.py`) and one per retrospective (`mark-retro`, run by the skill `retro`); the
-SessionStart hook sums the sessions since the last retrospective. Standard library only: the hooks import
-this module with the dev shell's Python.
+The friction log `.checks/friction.jsonl` gets a line when a session ends (written by the SessionEnd hook,
+`.claude/hooks/friction.py`) and one per retrospective (`mark-retro`, run by the skill `retro`). A session's
+line counts what came after the log's last line about that session or, if later, the last retrospective: so
+the lines after a retrospective add up (the SessionStart hook sums them), also those of a session that was
+resumed or that ran the retrospective itself. Standard library only: the hooks import this module with the dev
+shell's Python.
 """
 
 import argparse
@@ -29,14 +34,18 @@ import re
 import sys
 from collections import Counter
 from collections.abc import Iterator
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 FRICTION_LOG = ROOT / ".checks" / "friction.jsonl"
+KINDS = ["hook_blocks", "tool_errors", "rejected", "interrupts", "diagnostics"]
+"""The kinds of friction, as the friction log and the table name them."""
 INTERRUPTED = "[Request interrupted by user"
 REJECTED = ("The user doesn't want to proceed", "Permission for this", "denied by")
+SHOWN = 300
+"""How many characters of a call and of its answer `--details` shows."""
 
 type Json = dict[str, object]
 
@@ -58,15 +67,19 @@ def find(prefix: str) -> Path:
     return matches[0]
 
 
-def records(path: Path) -> Iterator[Json]:
-    """The JSON objects of a transcript, without those of subagents (`isSidechain`)."""
+def records(path: Path, since: datetime | None = None) -> Iterator[Json]:
+    """The JSON objects of a transcript, without those of subagents (`isSidechain`); with `since`, without those
+    written up to then (an object that carries no time stays)."""
     with path.open(encoding="utf-8") as lines:
         for line in lines:
             try:
                 record = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if isinstance(record, dict) and not record.get("isSidechain"):
+            if not isinstance(record, dict) or record.get("isSidechain"):
+                continue
+            at = record.get("timestamp")
+            if since is None or not isinstance(at, str) or datetime.fromisoformat(at) > since:
                 yield record
 
 
@@ -106,65 +119,120 @@ def title(path: Path) -> str:
     return found
 
 
-@dataclass
-class Friction:
-    session: str
-    hook_blocks: int = 0
-    tool_errors: int = 0
-    rejected: int = 0
-    interrupts: int = 0
-    diagnostics: int = 0
-    commands: Counter[str] = field(default_factory=Counter[str])
+@dataclass(frozen=True)
+class Event:
+    """One piece of friction."""
 
-    def total(self) -> int:
-        return self.hook_blocks + self.tool_errors + self.rejected + self.interrupts
+    at: str
+    """Its time in the transcript (UTC)."""
+    kind: str
+    """One of `KINDS`."""
+    call: str
+    """The tool call it came from; of an interrupt, the calls it cancelled."""
+    answer: str
+    """What the hook, the tool or the user answered."""
 
 
-def friction(path: Path) -> Friction:
-    found = Friction(path.stem)
-    for record in records(path):
-        kind = record.get("type")
-        if kind == "attachment":
-            attachment = record.get("attachment")
-            attached = attachment.get("type") if isinstance(attachment, dict) else None
-            found.hook_blocks += attached == "hook_blocking_error"
-            found.diagnostics += attached == "diagnostics"
+def events(path: Path, since: datetime | None = None) -> Iterator[Event]:
+    """The friction of a session in the order of its transcript (with `since`: what came after it)."""
+    calls: dict[str, str] = {}  # by the id of the tool use
+    cancelled: list[Event] = []  # rejections that an interrupt may follow: then they are part of it
+    for record in records(path, since):
+        kind, at = record.get("type"), str(record.get("timestamp", ""))
+        attachment = record.get("attachment")
+        if kind == "attachment" and isinstance(attachment, dict):
+            if attachment.get("type") == "hook_blocking_error":
+                error = attachment.get("blockingError")
+                answer = error.get("blockingError") if isinstance(error, dict) else error
+                call = calls.get(str(attachment.get("toolUseID")), str(attachment.get("hookName")))
+                yield Event(at, "hook_blocks", call, str(answer))
+            elif attachment.get("type") == "diagnostics":
+                yield Event(at, "diagnostics", "", json.dumps(attachment.get("files")))
+        elif kind == "assistant":  # Claude went on: no interrupt followed the rejections
+            yield from cancelled
+            cancelled.clear()
         for block in contents(record):
-            if kind == "assistant" and block.get("type") == "tool_use" and block.get("name") == "Bash":
-                tool_input = block.get("input")
-                command = tool_input.get("command") if isinstance(tool_input, dict) else None
-                if isinstance(command, str):
-                    found.commands[" ".join(command.split()[:2])] += 1
+            if kind == "assistant" and block.get("type") == "tool_use":
+                calls[str(block.get("id"))] = call_of(block)
             elif kind == "user" and block.get("type") == "tool_result":
-                result = text_of(block)
-                if any(marker in result[:300] for marker in REJECTED):
-                    found.rejected += 1
+                answer, call = text_of(block), calls.get(str(block.get("tool_use_id")), "")
+                if any(marker in answer[:300] for marker in REJECTED):
+                    cancelled.append(Event(at, "rejected", call, answer))
                 elif block.get("is_error"):
-                    found.tool_errors += 1
+                    yield Event(at, "tool_errors", call, answer)
             elif kind == "user" and block.get("type") == "text" and text_of(block).startswith(INTERRUPTED):
-                found.interrupts += 1
+                yield Event(at, "interrupts", "; ".join(event.call for event in cancelled), text_of(block))
+                cancelled.clear()
+    yield from cancelled
+
+
+def call_of(block: Json) -> str:
+    """A tool use in short: the tool and its command or file (else its whole input)."""
+    tool_input = block.get("input")
+    told = tool_input.get("command") or tool_input.get("file_path") if isinstance(tool_input, dict) else None
+    return f"{block.get('name')}: {told or tool_input}"
+
+
+def command_beginnings(path: Path, since: datetime | None = None) -> Counter[str]:
+    """How often each beginning (two words) of a Bash command occurs in a session."""
+    found = Counter[str]()
+    for record in records(path, since):
+        for block in contents(record):
+            tool_input = block.get("input")
+            command = tool_input.get("command") if isinstance(tool_input, dict) else None
+            if record.get("type") == "assistant" and block.get("name") == "Bash" and isinstance(command, str):
+                found[" ".join(command.split()[:2])] += 1
     return found
 
 
-def log_friction(found: Friction) -> None:
-    """Appends a session's counts to the friction log."""
-    entry = {key: value for key, value in asdict(found).items() if key != "commands"}
-    append_log({"at": datetime.now(UTC).isoformat(timespec="seconds"), **entry})
+def summaries(path: Path) -> tuple[int, int]:
+    """How often the context of a session was summarised: in all, and since a turn last ended (a Stop that no
+    hook blocked or failed at)."""
+    num_summaries = num_new = 0
+    for record in records(path):
+        if record.get("type") != "system":
+            continue
+        if record.get("subtype") == "compact_boundary":
+            num_summaries, num_new = num_summaries + 1, num_new + 1
+        elif record.get("subtype") == "stop_hook_summary" and not record.get("hookErrors"):
+            num_new = 0
+    return num_summaries, num_new
+
+
+def log_friction(path: Path) -> None:
+    """Appends a session's friction to the log: what came after the log's last line about the session or, if
+    later, the last retrospective."""
+    counts = Counter(event.kind for event in events(path, last_logged(path.stem)))
+    append_log({"session": path.stem, **{kind: counts[kind] for kind in KINDS}})
 
 
 def append_log(entry: Json) -> None:
     FRICTION_LOG.parent.mkdir(exist_ok=True)
     with FRICTION_LOG.open("a", encoding="utf-8") as log:
-        log.write(json.dumps(entry) + "\n")
+        log.write(json.dumps({"at": datetime.now(UTC).isoformat(timespec="seconds"), **entry}) + "\n")
+
+
+def logged() -> list[Json]:
+    """The lines of the friction log."""
+    if not FRICTION_LOG.exists():
+        return []
+    return [json.loads(line) for line in FRICTION_LOG.read_text(encoding="utf-8").splitlines()]
+
+
+def last_logged(session: str | None = None) -> datetime | None:
+    """When the friction log last got a retrospective or, with `session`, a line of that session."""
+    times = [
+        str(entry.get("at"))
+        for entry in logged()
+        if entry.get("retro") or (session is not None and entry.get("session") == session)
+    ]
+    return datetime.fromisoformat(times[-1]) if times else None
 
 
 def since_last_retro() -> list[Json]:
-    """The logged sessions after the last retrospective."""
-    if not FRICTION_LOG.exists():
-        return []
+    """The sessions' lines after the last retrospective."""
     entries: list[Json] = []
-    for line in FRICTION_LOG.read_text(encoding="utf-8").splitlines():
-        entry = json.loads(line)
+    for entry in logged():
         entries = [] if entry.get("retro") else [*entries, entry]
     return entries
 
@@ -199,19 +267,30 @@ def hits(path: Path, *, everything: bool) -> Iterator[tuple[str, str, str]]:
                     yield str(record.get("timestamp", ""))[:16], str(record["type"]).upper(), text_of(block)
 
 
-def show_friction(paths: list[Path], *, commands: bool) -> None:
-    columns = ["hook_blocks", "tool_errors", "rejected", "interrupts", "diagnostics"]
-    print("session   " + "  ".join(f"{column:>11}" for column in columns))
-    total = Counter[str]()
-    for path in paths:
-        found = friction(path)
-        counts = asdict(found)
-        print(f"{found.session[:8]}  " + "  ".join(f"{counts[column]:11}" for column in columns))
-        total.update(found.commands)
+def show_friction(paths: list[Path], since: datetime | None, *, details: bool, commands: bool) -> None:
+    if since is not None:
+        print(f"since the retrospective of {since:%Y-%m-%d %H:%M} (UTC)")
+    found = {path: list(events(path, since)) for path in paths}
+    print("session   " + "  ".join(f"{kind:>11}" for kind in KINDS))
+    for path, session_events in found.items():
+        counts = Counter(event.kind for event in session_events)
+        print(f"{path.stem[:8]}  " + "  ".join(f"{counts[kind]:11}" for kind in KINDS))
+    if details:
+        for path, session_events in found.items():
+            for event in session_events:
+                print(f"\n{path.stem[:8]} {event.at[:16]} {event.kind}: {shown(event.call)}\n    {shown(event.answer)}")
     if commands:
+        total = Counter[str]()
+        for path in paths:
+            total.update(command_beginnings(path, since))
         print("\nmost frequent Bash commands (first two words):")
         for command, times in total.most_common(25):
             print(f"{times:5}  {command}")
+
+
+def shown(text: str) -> str:
+    """`text` on one line, its first `SHOWN` characters."""
+    return " ".join(text.split())[:SHOWN]
 
 
 def main() -> int:
@@ -228,7 +307,9 @@ def main() -> int:
     counting = actions.add_parser("friction")
     counting.add_argument("sessions", nargs="*")
     counting.add_argument("-n", type=int, default=5, help="the last N sessions (without SESSION)")
-    counting.add_argument("--commands", action="store_true")
+    counting.add_argument("--since-retro", action="store_true", help="only what came after the last retrospective")
+    counting.add_argument("--details", action="store_true", help="each piece of friction: the call and its answer")
+    counting.add_argument("--commands", action="store_true", help="the most frequent Bash command beginnings")
     actions.add_parser("mark-retro")
     args = parser.parse_args()
     match args.action:
@@ -240,10 +321,18 @@ def main() -> int:
         case "search":
             show_search(args.term, args.n, everything=args.all)
         case "friction":
-            paths = [find(prefix) for prefix in args.sessions] or transcripts()[-args.n :]
-            show_friction(paths, commands=args.commands)
+            since = last_logged() if args.since_retro else None
+            paths = [find(prefix) for prefix in args.sessions]
+            if not paths:
+                recent = transcripts()
+                paths = (
+                    recent[-args.n :]
+                    if since is None
+                    else [path for path in recent if datetime.fromtimestamp(path.stat().st_mtime, UTC) > since]
+                )
+            show_friction(paths, since, details=args.details, commands=args.commands)
         case _:
-            append_log({"at": datetime.now(UTC).isoformat(timespec="seconds"), "retro": True})
+            append_log({"retro": True})
     return 0
 
 

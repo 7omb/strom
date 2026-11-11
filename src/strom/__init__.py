@@ -34,7 +34,7 @@ Running (async only; a `Pools` is always required):
     async with stream(stage, inputs, pools) as outputs:              a run: its outputs as they come
   * `inputs`: an iterable or an async iterable. Pool sizes default to the hardware's,
     default_cpu_workers() and default_io_workers(): `Pools.open()` alone works.
-  * Other backends (see Backends): `Pools.using(cpu=Processes(workers=8), io=Threads(workers=16))`.
+  * Other backends (see Backends): `Pools.open_on(cpu=Processes(workers=8), io=Threads(workers=16))`.
   * What to do with the outputs is the consumer's code: a list (`[out async for out in outputs]`), a
     sum, a dict, or an effect per output. A cheap effect is the body of the `async for`; a blocking
     one is an io_stage (or cpu_stage) that returns what it did; effects at the same time are
@@ -201,7 +201,7 @@ Resources vs. concurrency:
       it stays put: an io_stage runs all items of an iterator on the thread that opened it.
     - Bound every wait: `sqlite3.connect(timeout=...)`, `statement_timeout`, `pool_timeout`.
   * Use a `Pools` within one event loop; several runs at once in it share its pools. At the end of
-    the `Pools.open` or `Pools.using` block, each backend closes without blocking the event loop, also
+    the `Pools.open` or `Pools.open_on` block, each backend closes without blocking the event loop, also
     when the block is cancelled: the built-in ones cancel pool tasks not yet started and wait for
     running ones, in a thread.
 
@@ -287,10 +287,10 @@ Testing (`help(strom.testing)`):
 
 Backends: what runs the pool of a resource, one per resource and `Pools`, created on first use.
   `Pools.open(cpu_workers=..., io_workers=..., cpu_backend=...)` is short for
-  `Pools.using(cpu=Processes(...) or Threads(...), io=Threads(...))`; the `cpu_backend` (`CpuBackendKind`):
+  `Pools.open_on(cpu=Processes(...) or Threads(...), io=Threads(...))`; the `cpu_backend` (`CpuBackendKind`):
     "process" -> Processes: worker processes (any package; pickling + process startup cost)
     "thread"  -> Threads: threads of this interpreter; parallel only on the free-threaded build
-                 (python3.14t), `Pools.open` warns otherwise (`Pools.using` takes the choice as made)
+                 (python3.14t), `Pools.open` warns otherwise (`Pools.open_on` takes the choice as made)
   `PoolConfig(cpu=..., io=...)` (the type of `pools.config`) holds a backend config per resource, a
   callable that creates the backend:
     Threads(workers=n)            threads of this interpreter; "cpu" or "io"
@@ -344,7 +344,7 @@ from strom._stages.factories import (
     untag,
     where,
 )
-from strom._stages.model import Left, Right, Stage, Using
+from strom._stages.model import Left, Right, Stage
 
 __all__ = [
     "Stage",
@@ -359,7 +359,6 @@ __all__ = [
     "worker_handle",
     "WorkerHandle",
     "using",
-    "Using",
     "stage",
     "async_stage",
     "io_stage",

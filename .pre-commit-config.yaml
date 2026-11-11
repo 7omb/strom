@@ -1,5 +1,6 @@
 # `pre-commit install` installs both hooks: at a commit, the fixers and `make lint`, `make type`; at a push,
-# `make check` (which also runs the tests and the examples). The checks themselves are defined in the Makefile only.
+# `make check` (which also runs the tests and the examples). The checks and ruff's fixers are defined in the Makefile
+# only; `make fix` in turn runs the mdformat hook of this file.
 default_install_hook_types: [pre-commit, pre-push]
 default_stages: [pre-commit]
 repos:
@@ -29,15 +30,9 @@ repos:
 - repo: local
   hooks:
   # fixers of the files in the commit
-  - id: ruff
-    name: ruff (fixes)
-    entry: ruff check --fix
-    language: system
-    types_or: [python, pyi]
-    require_serial: true
-  - id: ruff-format
-    name: ruff format
-    entry: ruff format
+  - id: fix
+    name: make fix (ruff)
+    entry: sh -c 'make --no-print-directory --silent fix FILES="$*"' --
     language: system
     types_or: [python, pyi]
     require_serial: true

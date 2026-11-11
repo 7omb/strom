@@ -7,8 +7,9 @@ description: Retrospective of past Claude Code sessions on strom - find friction
 
 ## Steps
 
-1. **Collect**: `uv run --frozen python bin/sessions.py friction -n 8 --commands` (the counts per session;
-   `.checks/friction.jsonl` logs them since the last retrospective) and `... list`, then per session with friction
+1. **Collect**: `uv run --frozen python bin/sessions.py friction --since-retro --details --commands` (the sessions that
+   went on after the last retrospective: their counts since then, each piece of friction with its call and answer, the
+   frequent commands) and `... list` (a transcript of many MB outgrew its context), then per session
    `... prompts SESSION` (what the user asked and corrected) and `... search TERM --all` for patterns (e.g. `stale`,
    `again`, `instead`, `hang`, `timed out`). Look for:
    - corrections the user had to repeat (a preference to record),

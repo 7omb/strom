@@ -346,7 +346,7 @@ async def test_queued_pool_tasks_do_not_run_after_an_error_of_the_inputs() -> No
         assert failed.wait(WAIT_LIMIT_TIME)
         return [item]
 
-    async with P.Pools.using(cpu=P.Threads(workers=1), io=io_pool) as pools:
+    async with P.Pools.open_on(cpu=P.Threads(workers=1), io=io_pool) as pools:
         with run_error(ValueError, "^cannot read$"):
             await outputs_of(P.io_stage(wait_for_the_failure, concurrency=4), numbers(), pools)
         # before the pools close, which cancels queued pool tasks: once a later one has run on the one
@@ -401,7 +401,7 @@ class FailingRelease(PicklingBackend):
 
 async def test_a_run_releases_its_scope_once_at_its_end_and_a_release_error_fails_it() -> None:
     io = FailingRelease(1)
-    async with P.Pools.using(cpu=P.Threads(workers=1), io=lambda: io) as pools:
+    async with P.Pools.open_on(cpu=P.Threads(workers=1), io=lambda: io) as pools:
         with run_error(ReleaseFailure):
             await outputs_of(P.io_stage(inc) | P.io_stage(inc), [1, 2], pools)
         assert io.num_releases == 1  # one scope for both steps

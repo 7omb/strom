@@ -40,10 +40,10 @@ Where each kind of fact lives, once (point there, don't copy it):
 - Lines have at most 120 characters: mdformat (pre-commit) wraps paragraphs, not table rows. Tables only for cells of a
   few words, each row within 120 characters; longer content as a list or sections. `bin/check_docs.py` enforces it (the
   tables of `docs/research/` exempt until restructured, `docs/todo.md`).
-- Format a changed doc before checking it, `pre-commit run mdformat --files FILE` (the commit hook does it anyway, and
-  may then break the limit): mdformat keeps a code span on one line, so split a span that is longer than a line; and a
-  block inside one list item (a code fence) puts a blank line between all items of its list, so keep an item to one
-  paragraph (2026-11-11).
+- At the end of a turn the Stop hook (`.claude/hooks/docs_hook.py`) formats the changed docs with mdformat, as the
+  commit hook does, and runs `bin/check_docs.py`; within a turn, `make fix FILES=FILE`. mdformat keeps a code span on
+  one line, so split a span that is longer than a line; and a block inside one list item (a code fence) puts a blank
+  line between all items of its list, so keep an item to one paragraph (2026-11-11).
 - Move finished tasks out of `docs/todo.md`; cite code by name, not by line number.
 - A revised plan replaces the old one in place (no `_V2` files; git keeps the history) and is self-contained: it never
   mentions earlier versions or what changed (skill `plan`).

@@ -182,7 +182,7 @@ async def test_all_items_of_an_input_come_from_the_thread_that_opened_its_iterat
     """Affinity is real on every streaming backend: more iterators open at once than there are threads."""
     io: Callable[[], StreamingBackend] = P.Threads(workers=3) if name == "threads" else Pickling(workers=3)
     threads: dict[int, set[int]] = {}
-    async with P.Pools.using(cpu=P.Threads(workers=1), io=io) as pools:
+    async with P.Pools.open_on(cpu=P.Threads(workers=1), io=io) as pools:
         async with P.stream(P.io_stage(threads_of, concurrency=4), range(12), pools) as outputs:
             async for item, thread in outputs:
                 threads.setdefault(item, set()).add(thread)

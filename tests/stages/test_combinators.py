@@ -289,7 +289,7 @@ def check_runs(sides: LawSides, without_shared_memory: bool = False) -> None:
 
     async def run() -> tuple[list[object], list[object]]:
         opened = (
-            P.Pools.using(cpu=cpu, io=io)
+            P.Pools.open_on(cpu=cpu, io=io)
             if without_shared_memory
             else P.Pools.open(cpu_workers=2, io_workers=8, cpu_backend="thread")
         )

@@ -31,19 +31,20 @@ No pydantic; frozen dataclasses with `__post_init__` checks
 ## Pools API
 
 Async only: `async with Pools.open(cpu_workers=..., io_workers=..., cpu_backend=...)`, keyword-only, its configuration
-checked at the call (the warning names the caller's line), short for `Pools.using(cpu=..., io=...)` with backend configs
-(user guide, Backends): frozen dataclasses whose `__call__` creates the backend on first use, so `PoolConfig` needs no
-protocol and `io=Processes(...)` is a type error; only `Pools.open`/`Pools.using` construct a `Pools`; pool sizes
-default to the hardware's (2026-11-06). The GIL warning only for the literal `cpu_backend="thread"` (an explicit
-`Threads` for cpu is the user's choice). Names: the pool is the role, the backend what runs it; public alias
-`CpuBackendKind` (callers type their backend parameter). A `Pools` shows only `open`, `using`, `config` and `closed`; a
-run reaches its backends through `backends_of(pools)` (see Concurrency and pools). The interface for implementers in
-`strom.backends`, apart from `__all__`, split (2026-11-06) into `Backend` (`run(fn, arg)`, `aclose`: an implementer for
-"cpu" writes two methods) and `StreamingBackend` (adds what only `io_stage` needs: `affinity`, `release`). A backend
-knows nothing of runs (2026-11-11): `run` gives fn(arg) or raises what it raised, and what a run adds to a pool task
-wraps the function it passes (see Offloading). `strom.testing.check_backend`/`check_streaming_backend` check what a
-caller can observe of the contract (picklable for other processes and hosts). `Threads` threads are named "threads" by
-default (`Pools.open`: "cpu" and "io")
+checked at the call (the warning names the caller's line), short for `Pools.open_on(cpu=..., io=...)` with backend
+configs (user guide, Backends): frozen dataclasses whose `__call__` creates the backend on first use, so `PoolConfig`
+needs no protocol and `io=Processes(...)` is a type error; only `Pools.open`/`Pools.open_on` construct a `Pools`; pool
+sizes default to the hardware's (2026-11-06). The GIL warning only for the literal `cpu_backend="thread"` (an explicit
+`Threads` for cpu is the user's choice). Names: the pool is the role, the backend what runs it; `open_on` (2026-11-11)
+is the block of `open` on the given backends; public alias `CpuBackendKind` (callers type their backend parameter). A
+`Pools` shows only `open`, `open_on`, `config` and `closed`; a run reaches its backends through `backends_of(pools)`
+(see Concurrency and pools). The interface for implementers in `strom.backends`, apart from `__all__`, split
+(2026-11-06) into `Backend` (`run(fn, arg)`, `aclose`: an implementer for "cpu" writes two methods) and
+`StreamingBackend` (adds what only `io_stage` needs: `affinity`, `release`). A backend knows nothing of runs
+(2026-11-11): `run` gives fn(arg) or raises what it raised, and what a run adds to a pool task wraps the function it
+passes (see Offloading). `strom.testing.check_backend`/`check_streaming_backend` check what a caller can observe of the
+contract (picklable for other processes and hosts). `Threads` threads are named "threads" by default (`Pools.open`:
+"cpu" and "io")
 
 **Rejected**
 
@@ -62,6 +63,10 @@ default (`Pools.open`: "cpu" and "io")
 - a private alias plus `# type: ignore` in callers
 - the name `Pool` (easy to confuse with `Pools`)
 - the name `CpuBackend` (reads like a `Backend` subclass)
+- the name `Pools.using` (until 2026-11-11: also the name of `using(handle, fn)`, an unrelated concept)
+- in its place `Pools.on` (says less than `open_on`: not that it is the block of `open`)
+- in its place `Pools.backed_by` (the glossary's word, but it reads as a property of pools that exist)
+- in its place `Pools.with_backends` (`async with Pools.with_…` stutters)
 - backends as records of functions, or as Protocols in place of the two classes (`Run`, `PlacedRun`, `release`,
   `aclose`: `docs/research/backends.md`, approach 4, and `docs/research/dependency_injection.md`, D3): four public names
   for two, and an implementer's class would lose the `@override` check against a base and the default of `close_handle`
@@ -975,12 +980,20 @@ points there
 One definition of each check, a make target (2026-11-11); `make check` is lint, type, test and examples. tox runs the
 targets (the envs of a Python version, and the benchmarks' results, on their own interpreter against the installed
 package), and so do the git hooks: at a commit `make lint` and `make type`, beside the fixers of the changed files; at a
-push `make check`, so the tests run without anyone asking (`pre-commit install` sets up both hooks; direnv does it)
+push `make check`, so the tests run without anyone asking (`pre-commit install` sets up both hooks; direnv does it). The
+fixers are a target too (`make fix`, on every file or on `FILES`): ruff's fixes and its formatter, and mdformat as the
+commit hook installs it. The commit hook, the Claude Code hooks and `bin/rename.py` run that target and the parts of
+`lint` (`lint-python`, which takes `FILES` and ruff's options, and `lint-docs`) instead of the tools
 
 **Rejected**
 
 - the commands spelled out again per tool, in `tox.toml` and as hooks (until 2026-11-11: they drifted, as
   `bin/check_docs.py` ran in `make lint` only, and none of them ran the tests by itself)
+- the Claude Code hooks and `bin/rename.py` calling ruff, pre-commit and `bin/check_docs.py` themselves (until
+  2026-11-11: a third spelling of the fixers beside the commit hook's, and of parts of lint)
+- `fix` also reporting what it could not fix (a failing `ruff check` would end the recipe before mdformat ran, and the
+  commit hook showed every leftover twice: the report is `lint`'s)
+- nixpkgs-fmt in `fix` (it has one definition, the commit hook, and no hook of Claude Code formats nix files)
 - checks in `flake.nix` as one more, hermetic gate (`nix flake check` with the venv from `uv.lock` via uv2nix,
   2026-11-04 to 2026-11-10): a fourth definition, which the jail could not run (no `nix`), and whose sandbox has neither
   uv nor network, so that the examples, uv scripts with locks of their own, ran with the interpreter's packages only (a
@@ -1030,10 +1043,31 @@ hand in four sessions); the pyright LSP plugin off for this project (163 diagnos
 navigation never used). Retrospective of 8 sessions (2026-11-08): the skill `plan` keeps the user's requirements at the
 top of a plan, checks runtime claims with a probe and ends writing and revising with a review pass (the user corrected
 dropped requirements twice in one session and asked for another pass on the same plan four times); the jail has only
-`python3.14t` of the free-threaded build on PATH (it reverses the package order, so `uv -p 3.14` picked 3.14t)
+`python3.14t` of the free-threaded build on PATH (it reverses the package order, so `uv -p 3.14` picked 3.14t).
+Retrospective of 8 sessions (2026-11-11): the skill `validate-change` ends with a read of the whole diff for structure
+and simplicity (the user had to ask for that pass in four sessions); a report ends with what is left, and Claude says
+first when the repository is not in the state the user describes (`CLAUDE.md`); findings are implemented a group per
+session, and the Stop hook says when a session's context was summarised (one session reached 23 MB with two summaries
+and two stops at the usage limit); the Stop hook formats the changed docs with mdformat and runs `bin/check_docs.py`
+(`docs_hook`; one session ran the formatter by hand twelve times); `bin/ab.py --cpus` pins a comparison, and each of its
+runs says how long the rest takes; `bin/rename.py` moves a file with its imports and citations; tests on 3.14t run
+through `tox -e 3.14t -- ARGS`; the retrospective reads its data with `bin/sessions.py friction --since-retro --details`
+from a friction log whose lines are increments (the script's docstring)
 
 **Rejected**
 
+- formatting a doc after each edit (mdformat through pre-commit takes 0.6 s per call, and the file would change under
+  the edits that follow in the turn)
+- cumulative counts per session in the friction log, with every session's counts recorded at a retrospective as the base
+  (2026-11-08: a session that ended again after a retrospective was summed with all it had before; the times in the
+  transcript give the increments without a second record)
+- an interrupt counted as a rejection per call it cancels (one interrupt of three pending edits made three of the four
+  rejections that suggest a retrospective)
+- a file per session for the note about a context summary (the transcript records each summary and each Stop)
+- `bin/ab.py` pinned to the fast cores by default (the jail has no `/sys`, and `/proc/cpuinfo` tells the cores apart
+  only where the fast ones have two threads each)
+- moving the test module along with a module in `bin/rename.py` (it would have to know the test layout; a second call
+  does it)
 - setting `UV_PYTHON` in the jail alone (covers uv's default, not `-p 3.14` or other tools that search PATH)
 - reversing `pythonVersions` for the jail (relies on how jail.nix orders PATH)
 - only instructions in `CLAUDE.md` (already ignored: rules not loaded, scripts instead of Edit)
@@ -1102,13 +1136,15 @@ flight at the block's end. The rules a user sees: user guide, Worker handles and
   counts as closed;
 - the lifecycle of a key is explicit states, changed in one place (`strom._runtime.worker_handles.handle_table`);
 - `WorkerHandle`, `worker_handle` and `using` live in `_runtime` (they need `Pools`; `_stages` imports nothing of
-  `_runtime`), `Using` itself as data in `_stages.model`.
+  `_runtime`), `Using` itself as data in `_stages.model`;
+- `using` is typed as what it gives, a function of one input (2026-11-11): the class behind it is not public.
 
 Sources: Pekko `mapWithResource`, Beam `DoFn` setup/teardown and `Shared`, Dask worker plugins, Ray actors, SQLAlchemy
 pooling guidance (one engine per process).
 
 **Rejected**
 
+- `Using` as a public name (until 2026-11-11: public only as the type `using` returned, which no caller has to name)
 - a module-level declaration closed when the workers end (setup and teardown invisible; teardown only at the `Pools`'
   end)
 - a key per `using` (two stages would hold two pools per worker)

@@ -34,7 +34,6 @@ def test_public_interface() -> None:
             "worker_handle",
             "WorkerHandle",
             "using",
-            "Using",
             "stage",
             "async_stage",
             "io_stage",

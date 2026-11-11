@@ -1,6 +1,6 @@
 ---
 name: validate-change
-description: The checks a change to strom needs before it is reported done (CLAUDE.md, Process) - reproduce the problem first, then the suite, interleaved A/B benchmarks, typing diffs of mypy, pyright and ty against HEAD, test-ID diffs for restructured tests and an injected bug for changed tests. Use when starting a change to src/, tests/, benchmarks/, examples/ or bin/, and before reporting it done.
+description: The checks a change to strom needs before it is reported done (CLAUDE.md, Process) - reproduce the problem first, then the suite, interleaved A/B benchmarks, typing diffs of mypy, pyright and ty against HEAD, test-ID diffs for restructured tests, an injected bug for changed tests and a read of the whole diff for structure and simplicity. Use when starting a change to src/, tests/, benchmarks/, examples/ or bin/, and before reporting it done.
 allowed-tools: Bash(git status:*), Bash(git diff:*)
 ---
 
@@ -17,10 +17,10 @@ Uncommitted changes now:
 
 | Change | Steps |
 | -- | -- |
-| Library (`src/`) | 1, 2, 3, 4; 6 if tests changed |
-| Tests only | 1, 2, 4, 6; 5 if they were moved, renamed or split |
-| Benchmarks | 2, 4; their results with `make bench-results` |
-| `bin/`, examples, config | 2, 4, plus running what changed on a case it must handle |
+| Library (`src/`) | 1, 2, 3, 4, 7; 6 if tests changed |
+| Tests only | 1, 2, 4, 6, 7; 5 if they were moved, renamed or split |
+| Benchmarks | 2, 4, 7; their results with `make bench-results` |
+| `bin/`, examples, config | 2, 4, 7, plus running what changed on a case it must handle |
 | Docs only (`*.md`, docstrings) | `make lint` (`bin/check_docs.py`: the paths and names they cite are tracked) |
 
 `REV` below is the revision the change starts from: `HEAD` while it is uncommitted, else e.g. `main~2`; `:index` is the
@@ -34,10 +34,10 @@ staged state (stage a version to compare later edits with, no commit needed).
    target and the full output of failures only. A test that fails or newly skips is part of the report, with its output.
 
 3. **Benchmarks**: `uv run --frozen python bin/ab.py REV . -- -k "<affected benchmarks>"` (interleaved runs; add
-   `BENCH_SCALE=0.2` for a first look). Run it in the background (`run_in_background`): one benchmark group with the
-   default 9 runs per side takes several minutes, past a foreground timeout. Report the ratios with their p-values:
-   timing claims need repeated, interleaved runs, a single run is no evidence. The full `make bench` only when the user
-   asks.
+   `BENCH_SCALE=0.2` for a first look, and `--cpus` where the cores differ in speed: `.claude/rules/tooling.md`). Run it
+   in the background (`run_in_background`): one benchmark group with the default 9 runs per side takes several minutes,
+   past a foreground timeout; its first lines say how long. Report the ratios with their p-values: timing claims need
+   repeated, interleaved runs, a single run is no evidence. The full `make bench` only when the user asks.
 
 4. **Typing**: `uv run --frozen python bin/typing_snapshot.py diff --against REV`. Every added diagnostic is a finding;
    `tests/` must get no new ty diagnostics.
@@ -55,6 +55,19 @@ staged state (stage a version to compare later edits with, no commit needed).
    exit code 3 (no verdict) means the tests fail without the bug too. Typical bugs: a concurrency limit ±1, an end of
    stream or a close left out, a count off by one. A failure flag shared by all runs hangs and says nothing: inject a
    bug that a narrow `-k` can catch.
+
+7. **Read the whole diff** once as its reviewer (`git diff REV`, and the new files), before the user has to ask for it:
+   with the criteria Structure, Simplicity and Consistency of the skill `review`, and for what past changes had to be
+   sent back for:
+
+   - a class with several concerns or many private methods; a function that does two things;
+   - a protocol held in flags or `None` where explicit states would say it;
+   - an abstraction, a parameter or a branch with one use; a helper that only forwards;
+   - a fact or a check in two places;
+   - an import that reads as a layer break (`ARCHITECTURE.md`, Packages);
+   - a name off `GLOSSARY.md` or the naming conventions.
+
+   Fix what it finds, then repeat the steps the fixes touch; what needs the user's decision goes into the report.
 
 ## Report
 

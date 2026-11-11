@@ -60,7 +60,7 @@ problem. Implementation inheritance is, in three places:
   ([Fowler, "Inversion of Control Containers and the Dependency Injection pattern"](https://martinfowler.com/articles/injection.html);
   [Seemann, "Composition Root"](https://blog.ploeh.dk/2011/07/28/CompositionRoot/)). In strom each backend config's
   `__call__` (`Threads`, `Processes`, `FromExecutor`) is already that root, run once per `Pools` on first use.
-  `Pools.using` is the root of the whole runtime.
+  `Pools.open_on` is the root of the whole runtime.
 - **Inject volatile dependencies only.** Seemann and van Deursen ("Dependency Injection Principles, Practices, and
   Patterns", 2019, ch. 1 [unverified]) inject what varies, needs a test double or is nondeterministic: an executor, an
   OS process. A stable internal helper (a dict, a small state holder) is constructed inside. Injecting everything gives

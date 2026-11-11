@@ -177,7 +177,7 @@ STATIC_CHECKS = [
     rejects("E7", 'Threads(workers="4")', 'expected "int"', "wrong type"),
     rejects(
         "E8",
-        "Pools.using(cpu=Threads(workers=1), io=Processes(workers=1))",
+        "Pools.open_on(cpu=Threads(workers=1), io=Processes(workers=1))",
         'expected "Callable[[], StreamingBackend]"',
         "io_stage streams iterators: not on processes",
     ),
@@ -240,9 +240,9 @@ STATIC_CHECKS = [
     accepts(
         "U16",
         "async def u16() -> None:\n"
-        "    async with Pools.using(cpu=FromExecutor(factory=ThreadPoolExecutor), io=Threads(workers=2)) as opened:\n"
+        "    async with Pools.open_on(cpu=FromExecutor(factory=ThreadPoolExecutor), io=Threads(workers=2)) as opened:\n"
         "        p: Pools = opened",
-        "Pools.using with an executor class as the factory",
+        "Pools.open_on with an executor class as the factory",
     ),
     accepts(
         "U7",
@@ -276,7 +276,12 @@ STATIC_CHECKS = [
     ),
     accepts("U15", "u15 = stream(ANALYZE, async_records(), pools)", "async inputs"),
     # worker handles
-    reveals("H1", "using(engine, rows)", "Using[str, static_check.Record]", "R, I and O inferred"),
+    reveals(
+        "H1",
+        "using(engine, rows)",
+        "def (str) -> typing.Iterable[static_check.Record]",
+        "a plain function of one input; R, I and O inferred",
+    ),
     reveals("H2", "io_stage(using(engine, rows))", "Stage[str, static_check.Record]", "an ordinary function"),
     reveals("H3", "cpu_stage(using(engine, rows)) | io_stage(split_words)", "Stage[str, str]", "composes"),
     rejects("H4", "using(engine, sub_rows)", 'Argument 2 to "using" has incompatible type', "fn for another handle"),

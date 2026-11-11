@@ -6,7 +6,7 @@ from collections.abc import AsyncIterator
 from helpers import Countdown, bag, collect, countdown_body, many, meaning
 
 import strom as P
-from strom._stages.model import Stage
+from strom._stages.model import Stage, Using
 
 
 def inc(item: int) -> list[int]:
@@ -48,7 +48,7 @@ def test_repr_shows_steps_in_order_including_lifted_ones_and_the_settings_of_com
 
 
 def test_a_function_using_a_handle_names_its_stage_and_its_handle_in_the_repr() -> None:
-    using = P.Using(inc, fn_name="inc", handle_name="engine")  # what `using` builds, without a handle
+    using = Using(inc, fn_name="inc", handle_name="engine")  # what `using` builds, without a handle
     assert repr(P.io_stage(using)) == "<Stage 'inc' (inc: io, using engine)>"
     assert repr(P.stage(using, name="on_loop")) == "<Stage 'on_loop' (on_loop: using engine)>"
     assert list(using(1)) == [2]

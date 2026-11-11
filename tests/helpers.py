@@ -274,7 +274,7 @@ def tracked_b(item: int) -> list[int]:
 
 class CountingThreads(StreamingBackend):
     """The thread backend, counting the pool tasks submitted to it, so that a test can wait until they are
-    queued. Its own config: `Pools.using(io=CountingThreads(workers=1))`."""
+    queued. Its own config: `Pools.open_on(io=CountingThreads(workers=1))`."""
 
     def __init__(self, workers: int) -> None:
         self._threads = P.Threads(workers=workers)()
@@ -424,7 +424,7 @@ def collect_pickling[I, O](stage: P.Stage[I, O], inputs: Iterable[I], recorder: 
     cpu, io = Pickling(), Pickling()
 
     async def run() -> list[O]:
-        async with P.Pools.using(cpu=cpu, io=io) as pools:
+        async with P.Pools.open_on(cpu=cpu, io=io) as pools:
             return await outputs_of(stage, inputs, pools, recorder=recorder)
 
     try:
