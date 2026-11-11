@@ -1,6 +1,7 @@
 # Glossary – strom
 
-Terms of `src/strom`, `tests/` and `benchmarks/benchmark.py`. One term per concept; definitions only.
+Terms of `src/strom`, `tests/` and `benchmarks/benchmark.py`, and of the development tools (`tools/`, Tools below). One
+term per concept; definitions only.
 
 ## Terms
 
@@ -134,3 +135,45 @@ Terms of `src/strom`, `tests/` and `benchmarks/benchmark.py`. One term per conce
 - **stage note**: `in stage '<name>'`, added once per stage the error passed.
 - **run errors** (`run_errors`): the errors that ended a run, as raised (a user's own exception group stays whole); a
   failed run raises them in one exception group.
+
+## Tools
+
+Terms of `strom_tools`. Where a term of the library recurs, it has the word in front that tells it apart: a **hook
+event** is no metrics event, a **friction event** neither, an example's outcome no outcome of a run.
+
+**Workspace**
+
+- **repository** (`Repository`): a checkout of this project, the value every tool function takes; its **state
+  directory** (`.checks/`) holds what the tools keep (snapshots, the friction log, the memos), unversioned.
+- **process run** (`ProcessRun`): the outcome of a command a tool started: its exit code (none after a timeout), stdout
+  and stderr.
+- **revision** (`Revision`): what a change is compared with: a commit, the working tree (`.`) or the index (`:index`); a
+  **copy** of one is its files exported into a directory of its own (`checkout`, `library_copy`).
+
+**Change checks**
+
+- **snapshot**: lines saved in the state directory to compare a later state with; a **line diff** (`LineDiff`) gives the
+  lines removed and added, compared as multisets.
+- **diagnostic**: a line of a type checker (`Checker`), without its line and column.
+- **mutant**: a copy of the code with an injected **bug** (`Bug`: a replacement or a patch); a **trial** (`Trial`) runs
+  the tests on the copy without it, then with it, and gives a **verdict** (`Verdict`): caught, missed, hung or
+  undecided.
+- **side** (`Side`): A or B, the two revisions of a benchmark comparison, measured in interleaved **runs**.
+
+**Docs, renames, examples**
+
+- **citation**: a span in backticks of a doc that names a path, a glob or a dotted name; it must be tracked
+  (`docs_check`). A **problem** (`Problem`) is a citation that is missing or untracked, or a long line.
+- **hit** (`Hit`, of a `HitKind`): a place a rename changes or lists; a **rename** (`Rename`) of an identifier or a move
+  of a file.
+- **example outcome** (`example_scripts.Outcome`): how an example ran or type-checked.
+
+**Sessions and hooks**
+
+- **transcript**: the JSONL file of a Claude Code session; a **record** (`Record`) is one of its lines, parsed.
+- **friction**: what cost a session round trips, a **friction event** (`friction.Event`) of a `Kind`; the **friction
+  log** holds a line per session and per **retrospective**.
+- **hook event** (`HookEvent`): what Claude Code passes a hook; a **handler** takes the repository and one and returns a
+  **hook result** (`HookResult`): a **block** (Claude must deal with its message), a **note** (for the user, for Claude)
+  or nothing. The **dispatcher** runs every handler of an event and gives Claude Code the **answer**.
+- **memo** (`Memo`): what a hook remembers from one call to the next, lines in the state directory.

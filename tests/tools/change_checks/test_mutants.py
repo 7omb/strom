@@ -3,28 +3,48 @@ from pathlib import Path
 import pytest
 from tool_helpers import commit, git, write
 
-from strom_tools.change_checks.mutants import Bug, Patch, Replace, Trial, Verdict, _inject, try_bug, verdict
+from strom_tools.change_checks.mutants import (
+    Bug,
+    Patch,
+    Replace,
+    Trial,
+    Verdict,
+    _inject,
+    ended,
+    failed_tests,
+    try_bug,
+    verdict,
+)
 from strom_tools.change_checks.revisions import Commit, WorkingTree
 from strom_tools.tool_error import ToolError
-from strom_tools.workspace.process_groups import DetachedRun
+from strom_tools.workspace.processes import ProcessRun
 from strom_tools.workspace.repository import Repository
 
-PASSED = DetachedRun(0, "", "")
+PASSED = ProcessRun(0, "", "")
 
 
 @pytest.mark.parametrize(
     ("trial", "expected"),
     [
-        (Trial(PASSED, DetachedRun(1, "", "")), Verdict.CAUGHT),
+        (Trial(PASSED, ProcessRun(1, "", "")), Verdict.CAUGHT),
         (Trial(PASSED, PASSED), Verdict.MISSED),
-        (Trial(PASSED, DetachedRun(None, "", "")), Verdict.HUNG),
-        (Trial(PASSED, DetachedRun(2, "", "")), Verdict.NONE),
-        (Trial(DetachedRun(1, "", ""), None), Verdict.NONE),
-        (Trial(DetachedRun(None, "", ""), None), Verdict.NONE),
+        (Trial(PASSED, ProcessRun(None, "", "")), Verdict.HUNG),
+        (Trial(PASSED, ProcessRun(2, "", "")), Verdict.UNDECIDED),
+        (Trial(ProcessRun(1, "", ""), None), Verdict.UNDECIDED),
+        (Trial(ProcessRun(None, "", ""), None), Verdict.UNDECIDED),
     ],
 )
 def test_the_verdict_follows_from_the_two_runs(trial: Trial, expected: Verdict) -> None:
     assert verdict(trial) == expected
+
+
+def test_a_run_ended_hung_or_with_its_exit_code_and_names_the_tests_that_failed() -> None:
+    assert (ended(ProcessRun(None, "", "")), ended(ProcessRun(4, "", ""))) == ("hung", "exit code 4")
+    stdout = "..F\nFAILED tests/a.py::test_one - assert 1\nERROR tests/b.py - ImportError\nfailed: 1\n"
+    assert failed_tests(ProcessRun(1, stdout, "")) == [
+        "FAILED tests/a.py::test_one - assert 1",
+        "ERROR tests/b.py - ImportError",
+    ]
 
 
 @pytest.fixture
@@ -79,5 +99,5 @@ def test_tests_that_fail_without_the_bug_give_no_verdict(doubling: Repository, t
     bug = Replace("src/strom/__init__.py", "2 * x", "3 * x")
     failing = try_bug(doubling, bug, WorkingTree(), ["-q"], 120, tmp_path / "copy")
     assert failing.mutant is None and failing.clean.returncode == 1
-    assert verdict(failing) == Verdict.NONE
+    assert verdict(failing) == Verdict.UNDECIDED
     assert verdict(try_bug(doubling, bug, Commit("HEAD"), ["-q"], 120, tmp_path / "old")) == Verdict.CAUGHT

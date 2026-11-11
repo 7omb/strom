@@ -1139,7 +1139,38 @@ layers of `ARCHITECTURE.md`, the groups of `_runtime`, no metrics in the runtime
 a break injected for each was caught by its test.
 
 A note beside a block stays as it is (2026-11-11): both are printed, and the hooks reference says the JSON is read with
-exit code 2 too (`strom_tools.hooks.hook_events`; not yet observed, `docs/todo.md`).
+exit code 2 too (`strom_tools.hooks.hook_results`; not yet observed, `docs/todo.md`).
+
+What a tool reads leniently is parsed once, at the boundary, into values (2026-11-11, review of the tools, A): a
+transcript's lines into the record classes of `strom_tools.sessions.transcripts`, the friction log's lines into
+`SessionLogged` and `RetroLogged`; outcomes are sum types with one renderer (`strom_tools.example_scripts.Outcome`,
+`strom_tools.docs_check.Problem`), closed sets enums (`Kind`, `HitKind`, `Checker`), and what a hook remembers between
+calls a `Memo` (`strom_tools.hooks.memos`: lines in a file of the state directory). Before, the readers each narrowed
+the raw dicts again, and the commands compared outcome strings. `loaded_natively` scans the raw lines: on the largest
+transcript (30 MB) parsing takes 192 ms and the scan 40 ms (minimum of 5), where the whole hook command takes about 60
+ms. The outputs of `bin/sessions.py`, `bin/check_docs.py` and `bin/rename.py` on this repository were the same before
+and after.
+
+What decides is apart from what runs and what prints (2026-11-11, review of the tools, B). A command reads its
+arguments, calls its tool and prints what it returns: the interleaved comparison yields its runs and then the rows
+(`strom_tools.change_checks.benchmark_comparison.comparison`), a rename is a plan (`strom_tools.renames.rename_of`,
+`hits`, `write`), `friction.covered` picks the transcripts of a report, and the snapshot arguments are parsed into a
+request. A hook handler is a shell around a pure decision (`docs_fixes._verdict`, `rules_loading._to_add`,
+`friction_notes._suggestion`), tested without a repository. Every process the tools start runs through
+`strom_tools.workspace.processes` (`tests/tools/test_structure.py` checks it), with one outcome type; a failed git
+command is a `ToolError` with git's message instead of a traceback. `docs_check` reads a doc as lines with their context
+and classifies a reference before it looks it up.
+
+The hook command for a Bash event, medians of 25 interleaved runs against HEAD: 113 and 134 ms with every handler module
+importing its tool at the top (defining the new dataclasses costs about a millisecond each: `docs_check` and
+`transcripts` took 6 ms each to import), then 64 and 71 ms with `docs_fixes` importing the docs check only when it runs;
+the 7 ms left are mostly `transcripts`, which `rules_loading` imports for `loaded_natively` (`docs/todo.md`).
+
+A module of the tools holds one concept, as in the library (2026-11-11, review of the tools, C): the snapshot store
+apart from the line diffs (`strom_tools.change_checks.snapshots`, the commands' part in
+`strom_tools.commands.snapshot_commands`), what a hook answers apart from what it gets (`hook_results`, `hook_events`),
+and running make named for what it holds (`strom_tools.workspace.make_runs`). The tools' terms are in `GLOSSARY.md`,
+Tools; a command's docstring holds its usage and what its output says, the mechanism its tool's.
 
 **Rejected**
 
@@ -1173,6 +1204,11 @@ exit code 2 too (`strom_tools.hooks.hook_events`; not yet observed, `docs/todo.m
 - one JSON object with `"decision": "block"` for a block beside a note (the path with exit code 2 and stderr is the one
   the friction count knows from the transcripts, and the reference says the note is read beside it)
 - examples with dependencies in the tests (the network, and minutes for their environments)
+- `loaded_natively` over the parsed records (on every Bash call: 192 ms on the largest transcript against a 40 ms scan)
+- the hooks' memos as JSON, or beside `state_dir` in `workspace` (what they hold is lines; only the hooks use them)
+- the result of a process as bytes, for `git archive` (every other caller wanted text: the archive goes into a file)
+- the dispatcher's tables naming handlers by strings, to import only the modules of an event (the names lose their
+  types; one lazy import in `docs_fixes` took the most of the cost)
 
 ## Test tools for users
 

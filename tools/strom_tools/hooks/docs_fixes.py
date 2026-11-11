@@ -12,28 +12,29 @@ check pass. If nothing else is wrong, they go to the user as a note, once per se
 `make lint` keeps failing for them until they are staged."""
 
 import re
-from pathlib import Path
+from collections.abc import Sequence
 
-from strom_tools.docs_check import UNTRACKED
-from strom_tools.hooks.hook_events import Block, HookResult, Note, TurnEnded
+from strom_tools.hooks.hook_events import TurnEnded
+from strom_tools.hooks.hook_results import Block, HookResult, Note
+from strom_tools.hooks.memos import Memo, forget, memo, recalled, remember, remembered_at
 from strom_tools.workspace import git_files
-from strom_tools.workspace.make_targets import problems, run_make
-from strom_tools.workspace.repository import Repository, state_dir
+from strom_tools.workspace.make_runs import problems, run_make
+from strom_tools.workspace.repository import Repository
 
 _MARKDOWN = ".md"
 _MAKES_OWN_LINE = re.compile(r"make(\[\d+\])?: \*\*\* ")
 """What make says of a target that failed, after the target's own output."""
 
 
-def _formatted_mark(repository: Repository) -> Path:
-    """Touched after mdformat ran: the next stop formats the files changed since (the commit hook formats them
-    all)."""
-    return state_dir(repository) / "docs-formatted"
+def _formatted(repository: Repository) -> Memo:
+    """Written, without lines, after mdformat ran: the next stop formats the files changed since (the commit hook
+    formats them all)."""
+    return memo(repository, "docs-formatted")
 
 
-def _told_untracked(repository: Repository) -> Path:
+def _told_untracked(repository: Repository) -> Memo:
     """The untracked citations the user was last told of."""
-    return state_dir(repository) / "docs-untracked"
+    return memo(repository, "docs-untracked")
 
 
 def at_stop(repository: Repository, event: TurnEnded) -> HookResult:
@@ -42,35 +43,39 @@ def at_stop(repository: Repository, event: TurnEnded) -> HookResult:
     changed = git_files.changed(repository)
     if not changed:
         return None
-    mark = _formatted_mark(repository)
-    formatted_at = mark.stat().st_mtime if mark.exists() else 0.0
+    formatted = _formatted(repository)
+    formatted_at = remembered_at(formatted) or 0.0
     markdown = [
         name for name in changed if name.endswith(_MARKDOWN) and (repository.root / name).stat().st_mtime > formatted_at
     ]
     unformatted = problems(run_make(repository, "fix", f"FILES={' '.join(markdown)}")) if markdown else ""
     if markdown and not unformatted:
-        mark.parent.mkdir(exist_ok=True)
-        mark.touch()
-    checked = problems(run_make(repository, "lint-docs"))
+        remember(formatted, [])
+    told = _told_untracked(repository)
+    result, told_now = _verdict(unformatted, problems(run_make(repository, "lint-docs")), recalled(told))
+    if told_now:
+        remember(told, told_now)
+    else:
+        forget(told)
+    return result
+
+
+def _verdict(unformatted: str, checked: str, told: Sequence[str]) -> tuple[HookResult, list[str]]:
+    """What a stop answers, from what the formatter and the docs check reported and the untracked citations the
+    user was told of; and those the user has been told of after it.
+
+    A problem other than an untracked citation blocks, with all of them. Else the untracked citations go to the
+    user as a note, unless they are those of the last time; none of them: nothing to say, and the next ones are
+    new."""
+    # here: the hook command imports every handler's module at every tool call, and the docs check's is slow
+    from strom_tools.docs_check import UNTRACKED
+
     untracked = [line for line in checked.splitlines() if line.endswith(UNTRACKED)]
     others = [line for line in checked.splitlines() if line not in untracked and not _MAKES_OWN_LINE.match(line)]
     if unformatted or others:
-        return Block(f"the docs after this turn's changes:\n{unformatted}{checked}")
-    return _untracked_note(repository, untracked)
-
-
-def _untracked_note(repository: Repository, untracked: list[str]) -> HookResult:
-    """A note for the user about the citations that only lack a `git add`, unless it is the one of the last time;
-    none of them: nothing to say, and the next ones are new."""
-    told = _told_untracked(repository)
+        return Block(f"the docs after this turn's changes:\n{unformatted}{checked}"), list(told)
+    if not untracked or untracked == list(told):
+        return None, untracked
     report = "\n".join(untracked)
-    if report == (told.read_text() if told.exists() else ""):
-        return None
-    if not untracked:
-        told.unlink()
-        return None
-    told.parent.mkdir(exist_ok=True)
-    told.write_text(report)
-    return Note(
-        for_user=f"The docs cite files that git does not track yet; staging them is yours (`git add`):\n{report}"
-    )
+    note = f"The docs cite files that git does not track yet; staging them is yours (`git add`):\n{report}"
+    return Note(for_user=note), untracked

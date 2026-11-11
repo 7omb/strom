@@ -1,6 +1,7 @@
 from tool_helpers import make_calls, with_makefile, write
 
-from strom_tools.workspace.make_targets import output, problems, run_make
+from strom_tools.workspace.make_runs import problems, run_make
+from strom_tools.workspace.processes import output
 from strom_tools.workspace.repository import Repository
 
 

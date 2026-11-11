@@ -14,24 +14,15 @@ run its targets (`make fix`, `make lint-python`, `make lint-docs`), as the git h
   SessionEnd                           `friction_notes.at_end`: log the session's friction
                                        `rules_loading.at_end`: forget what it loaded in the session
 
-A handler takes the repository and its event and returns a `HookResult` (`hook_events`). Every handler of an
+A handler takes the repository and its event and returns a `HookResult` (`hook_results`). Every handler of an
 event runs; one that raises is reported and never blocks."""
 
 import sys
 from collections.abc import Callable, Mapping, Sequence
 
 from strom_tools.hooks import docs_fixes, friction_notes, python_fixes, rules_loading
-from strom_tools.hooks.hook_events import (
-    Failed,
-    HookEvent,
-    HookResult,
-    SessionEnded,
-    SessionStarted,
-    ToolUsed,
-    TurnEnded,
-    answer,
-    parse,
-)
+from strom_tools.hooks.hook_events import HookEvent, SessionEnded, SessionStarted, ToolUsed, TurnEnded, parse
+from strom_tools.hooks.hook_results import Failed, HookResult, answer
 from strom_tools.json_objects import parsed
 from strom_tools.workspace.repository import Repository, this_repository
 

@@ -21,15 +21,20 @@ LAYERS = [
 """The parts of the package (modules and sub-packages), bottom-up: a part imports only from the layers above its
 own (earlier here)."""
 ORDER = {
-    "workspace": [{"repository", "process_groups"}, {"git_files", "make_targets"}],
+    "workspace": [{"repository", "processes"}, {"git_files", "make_runs"}],
     "change_checks": [
-        {"revisions", "line_diffs"},
+        {"revisions", "line_diffs", "snapshots"},
         {"benchmark_comparison", "typing_diagnostics", "collected_ids", "mutants", "make_checks"},
     ],
     "sessions": [{"transcripts"}, {"friction"}],
-    "hooks": [{"hook_events"}, {"python_fixes", "docs_fixes", "rules_loading", "friction_notes"}, {"dispatcher"}],
+    "hooks": [
+        {"hook_events", "memos"},
+        {"hook_results"},
+        {"python_fixes", "docs_fixes", "rules_loading", "friction_notes"},
+        {"dispatcher"},
+    ],
     "commands": [
-        {"command_line", "snapshots"},
+        {"command_line", "snapshot_commands"},
         {"ab", "check", "check_docs", "collect_ids", "mutant", "rename", "run_examples", "sessions", "typing_snapshot"},
     ],
 }
@@ -96,6 +101,18 @@ def test_a_module_imports_only_from_the_groups_before_it_in_its_package() -> Non
             for imported in own_imports(names[f"strom_tools.{package}.{module}"]):
                 if imported[0] == package and len(imported) > 1 and imported[1] in group_of:
                     assert group_of[imported[1]] < group_of[module], f"{package}.{module} imports {imported[1]}"
+
+
+def test_only_processes_starts_processes() -> None:
+    """One way to run a command: in a group of its own that a timeout kills, its outcome a `ProcessRun`."""
+    starting = ("subprocess.", "multiprocessing.", "concurrent.futures.")
+    for name, tree in modules().items():
+        if name != "strom_tools.workspace.processes":
+            started = [imported for imported in imports(tree) if f"{imported}.".startswith(starting)]
+            assert not started, f"{name} imports {started}"
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id == "os":
+                assert not node.attr.startswith(("system", "spawn", "exec", "popen", "fork")), f"{name}: os.{node.attr}"
 
 
 def test_only_the_entry_points_read_arguments_print_and_exit() -> None:

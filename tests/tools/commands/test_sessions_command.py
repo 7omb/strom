@@ -5,7 +5,7 @@ import pytest
 from tool_helpers import run_command, write_transcript
 
 from strom_tools.commands import sessions
-from strom_tools.sessions.friction import _logged
+from strom_tools.sessions.friction import RetroLogged, _logged
 from strom_tools.sessions.transcripts import _transcripts_dir
 from strom_tools.tool_error import ToolError
 from strom_tools.workspace.repository import Repository
@@ -97,7 +97,7 @@ def test_friction_since_a_retrospective_counts_what_came_after_it(
     recorded: Repository, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
 ) -> None:
     assert run_command(sessions, ["mark-retro"], recorded, monkeypatch) == 0
-    assert [entry.get("retro") for entry in _logged(recorded)] == [True]
+    assert [type(line) for line in _logged(recorded)] == [RetroLogged]
     run_command(sessions, ["friction", "--since-retro"], recorded, monkeypatch)
     shown = out(capsys)
     assert shown[0].startswith("since the retrospective of ")

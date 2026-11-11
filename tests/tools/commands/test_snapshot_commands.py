@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from tool_helpers import commit, run_command, write
 
+from strom_tools.change_checks.typing_diagnostics import Checker, checker_of
 from strom_tools.commands import collect_ids, command_line, typing_snapshot
 from strom_tools.tool_error import ToolError
 from strom_tools.workspace.repository import Repository
@@ -52,9 +53,9 @@ def checked(tested: Repository, monkeypatch: pytest.MonkeyPatch) -> Repository:
     """A repository whose checkers report what the file `diagnostics` of the checked directory says, a line per
     diagnostic (no checker runs: their output is parsed in `test_typing_diagnostics.py`)."""
 
-    def diagnostics(tools: Sequence[str], root: Path) -> list[str]:
+    def diagnostics(checkers: Sequence[Checker], root: Path) -> list[str]:
         reported = (root / "src" / "diagnostics").read_text().splitlines()
-        return [line for line in reported if line.split()[0] in tools]
+        return [line for line in reported if checker_of(line) in checkers]
 
     monkeypatch.setattr(typing_snapshot, "diagnostics", diagnostics)
     monkeypatch.setattr(command_line, "require_modules", lambda *names: None)

@@ -5,7 +5,8 @@ import time
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
-from strom_tools.workspace.make_targets import output, run_make
+from strom_tools.workspace.make_runs import run_make
+from strom_tools.workspace.processes import output
 from strom_tools.workspace.repository import Repository
 
 TARGETS = ["lint", "type", "test", "examples"]
@@ -16,7 +17,7 @@ TARGETS = ["lint", "type", "test", "examples"]
 class TargetRun:
     target: str
     passed: bool
-    time: float
+    run_time: float
     """Seconds it took."""
     output: str
 
@@ -33,4 +34,4 @@ def summary(run: TargetRun) -> str:
     """The target, `ok` or `FAILED`, its time and the last line of its output (e.g. pytest's counts)."""
     lines = [line for line in run.output.splitlines() if line.strip() and not line.startswith("make: ")]
     status = "ok" if run.passed else "FAILED"
-    return f"{run.target:9} {status:6} {run.time:6.1f}s  {lines[-1][:100] if lines else ''}"
+    return f"{run.target:9} {status:6} {run.run_time:6.1f}s  {lines[-1][:100] if lines else ''}"

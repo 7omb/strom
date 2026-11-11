@@ -5,8 +5,9 @@ What counts as a citation and what is skipped: `strom_tools.commands.check_docs`
 import ast
 import posixpath
 import re
-from collections.abc import Iterable
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path, PurePosixPath
 
 from strom_tools.workspace import git_files
@@ -60,65 +61,195 @@ def docs(repository: Repository) -> list[Path]:
     return [repository.root / name for name in sorted(git_files.seen(repository, "*.md", "**/*.md"))]
 
 
-def problems(doc: Path, known: Known) -> list[str]:
-    """The long lines of a doc and the references it cites that are not tracked, each as `FILE:LINE: ...`."""
+@dataclass(frozen=True)
+class LongLine:
+    doc: str
+    """As messages show it (`shown`)."""
+    line: int
+    length: int
+
+
+@dataclass(frozen=True)
+class MissingCitation:
+    """A reference to what is not there."""
+
+    doc: str
+    line: int
+    reference: str
+
+
+@dataclass(frozen=True)
+class UntrackedCitation:
+    """A reference to a file that is there, but not tracked: a `git add` makes it citable."""
+
+    doc: str
+    line: int
+    reference: str
+
+
+type Problem = LongLine | MissingCitation | UntrackedCitation
+
+
+def rendered(problem: Problem) -> str:
+    """A problem as `FILE:LINE: ...`, with a hint for a citation."""
+    match problem:
+        case LongLine(doc, line, length):
+            return f"{doc}:{line}: {length} characters (at most {_MAX_LINE})"
+        case MissingCitation(doc, line, reference):
+            return f"{doc}:{line}: {reference}{_MISSING}"
+        case UntrackedCitation(doc, line, reference):
+            return f"{doc}:{line}: {reference}{UNTRACKED}"
+
+
+def problems(doc: Path, known: Known) -> list[Problem]:
+    """The long lines of a doc and the references it cites that are not tracked, in the order of its lines."""
     root = known.repository.root
-    found: list[str] = []
     name = shown(known.repository, doc)
+    lines = list(_lines(doc.read_text(encoding="utf-8")))
+    long_lines = _long_lines(name, lines, wide_tables=doc.is_relative_to(root / _WIDE_TABLES))
     directory = doc.parent.relative_to(root).as_posix() if doc.is_relative_to(root) else None
-    lines = doc.read_text(encoding="utf-8").splitlines()
+    cited = _uncited(name, lines, directory, known)
+    return sorted([*long_lines, *cited], key=_line_of)  # stable: a long line before what it cites
+
+
+def _line_of(problem: Problem) -> int:
+    return problem.line
+
+
+class _Context(Enum):
+    """What part of a doc a line is in."""
+
+    FRONT_MATTER = "front matter"
+    CODE = "code"
+    """A code block, with its fences."""
+    REJECTED = "rejected"
+    """The list under **Rejected**, up to the next heading: the alternatives cite old names on purpose."""
+    PROSE = "prose"
+
+
+@dataclass(frozen=True)
+class _Line:
+    number: int
+    text: str
+    context: _Context
+
+
+def _lines(text: str) -> Iterator[_Line]:
+    """The lines of a doc, each with its context."""
+    lines = text.splitlines()
     in_front_matter = bool(lines) and lines[0] == "---"
     in_code_block = in_rejected = False
     for number, line in enumerate(lines, start=1):
         if in_front_matter:
             in_front_matter = number == 1 or line != "---"
+            yield _Line(number, line, _Context.FRONT_MATTER)
             continue
-        wide_table = line.startswith("|") and doc.is_relative_to(root / _WIDE_TABLES)
-        if len(line) > _MAX_LINE and "://" not in line and not wide_table:
-            found.append(f"{name}:{number}: {len(line)} characters (at most {_MAX_LINE})")
         if line.lstrip().startswith("```"):
             in_code_block = not in_code_block
-            continue
-        if in_code_block:
+            yield _Line(number, line, _Context.CODE)
             continue
         if line.startswith("#"):
             in_rejected = False
-        elif line.startswith("**Rejected**"):  # the alternatives cite old names on purpose
+        elif line.startswith("**Rejected**"):
             in_rejected = True
-        if in_rejected:
+        context = _Context.CODE if in_code_block else _Context.REJECTED if in_rejected else _Context.PROSE
+        yield _Line(number, line, context)
+
+
+def _long_lines(doc: str, lines: Iterable[_Line], *, wide_tables: bool) -> list[LongLine]:
+    """The lines over `_MAX_LINE` but those of the front matter, those with a URL and, with `wide_tables`, table
+    rows."""
+    return [
+        LongLine(doc, line.number, len(line.text))
+        for line in lines
+        if len(line.text) > _MAX_LINE
+        and line.context is not _Context.FRONT_MATTER
+        and "://" not in line.text
+        and not (wide_tables and line.text.startswith("|"))
+    ]
+
+
+def _uncited(
+    doc: str, lines: Iterable[_Line], directory: str | None, known: Known
+) -> list[MissingCitation | UntrackedCitation]:
+    """The references in backticks in the prose that cite what is not tracked, for a doc in `directory` (its path
+    from the root; None: a doc outside the repository)."""
+    found: list[MissingCitation | UntrackedCitation] = []
+    for line in lines:
+        if line.context is not _Context.PROSE:
             continue
-        for match in _SPAN.finditer(line):
+        for match in _SPAN.finditer(line.text):
             span: str = match.group(1)
             reference = span.strip()
-            if not _SKIPPED.search(reference) and not _cited(reference, directory, known.tracked, known):
-                hint = UNTRACKED if _cited(reference, directory, known.seen, known) else _MISSING
-                found.append(f"{name}:{number}: {reference}{hint}")
+            citation = _citation(reference, known.repository.root)
+            if citation is None or _listed(citation, directory, known.tracked, known):
+                continue
+            if _listed(citation, directory, known.seen, known):
+                found.append(UntrackedCitation(doc, line.number, reference))
+            else:
+                found.append(MissingCitation(doc, line.number, reference))
     return found
 
 
-def _cited(reference: str, directory: str | None, files: FileSet, known: Known) -> bool:
-    """Whether what `reference` cites is among `files`, for a doc in `directory` (its path from the root; None: a
-    doc outside the repository). True also for what is no path or dotted name."""
+@dataclass(frozen=True)
+class _DottedName:
+    """A module of a package of `SOURCE_ROOTS`, or a name in one."""
+
+    name: str
+
+
+@dataclass(frozen=True)
+class _PathCitation:
+    path: str
+    """From the root or from the citing doc's directory, or the end of a path (`_metrics/events.py`)."""
+
+
+@dataclass(frozen=True)
+class _GlobCitation:
+    pattern: str
+
+
+type _Citation = _DottedName | _PathCitation | _GlobCitation
+
+
+def _citation(reference: str, root: Path) -> _Citation | None:
+    """What a reference in backticks cites; None for one that cites nothing: a placeholder, code, a command, a
+    name, a notation."""
+    if _SKIPPED.search(reference):
+        return None
     if _DOTTED_NAME.fullmatch(reference):
-        return _library_name_cited(reference, files, known)
-    path = re.sub(r"(::\w+.*|:\d+(-\d+)?)$", "", reference)
+        return _DottedName(reference)
+    path = re.sub(r"(::\w+.*|:\d+(-\d+)?)$", "", reference)  # `:LINE` and `::TEST` name the file
     if "/" not in path and Path(path).suffix not in _EXTENSIONS:
-        return True  # not a path: code, a command, a name
+        return None  # code, a command, a name
     if not re.fullmatch(r"[\w./*\-\[\]]+", path):
-        return True  # a command or an expression that contains a slash
-    first_part_exists = (known.repository.root / path.split("/")[0]).exists()
+        return None  # a command or an expression that contains a slash
+    first_part_exists = (root / path.split("/")[0]).exists()
     if Path(path).suffix not in _EXTENSIONS and not path.endswith("/") and not first_part_exists:
-        return True  # a notation such as `tracked_a/b/c`, not a path
-    # from the root, or from the citing doc
-    candidates = {posixpath.normpath(posixpath.join(start, path)) for start in (".", directory) if start is not None}
-    if any(char in path for char in "*["):
-        return any(PurePosixPath(name).full_match(pattern) for pattern in candidates for name in files.with_directories)
-    if candidates & files.with_directories:
-        return True
-    inner = f"/{path.rstrip('/')}"
-    if any(f"/{name}".endswith(inner) or f"{inner}/" in f"/{name}" for name in files.files):
-        return True
-    return git_files.is_ignored(known.repository, path)  # generated files (`.checks/…`, caches) need not exist
+        return None  # a notation such as `tracked_a/b/c`
+    return _GlobCitation(path) if any(char in path for char in "*[") else _PathCitation(path)
+
+
+def _listed(citation: _Citation, directory: str | None, files: FileSet, known: Known) -> bool:
+    """Whether what `citation` cites is among `files`, for a doc in `directory`."""
+    match citation:
+        case _DottedName(name):
+            return _library_name_cited(name, files, known)
+        case _GlobCitation(pattern):
+            candidates = _from_root(pattern, directory)
+            return any(PurePosixPath(name).full_match(glob) for glob in candidates for name in files.with_directories)
+        case _PathCitation(path):
+            if _from_root(path, directory) & files.with_directories:
+                return True
+            inner = f"/{path.rstrip('/')}"
+            if any(f"/{name}".endswith(inner) or f"{inner}/" in f"/{name}" for name in files.files):
+                return True
+            return git_files.is_ignored(known.repository, path)  # generated files (`.checks/…`) need not exist
+
+
+def _from_root(path: str, directory: str | None) -> set[str]:
+    """What `path` names from the root: itself, or from the citing doc's directory."""
+    return {posixpath.normpath(posixpath.join(start, path)) for start in (".", directory) if start is not None}
 
 
 def _library_name_cited(dotted: str, files: FileSet, known: Known) -> bool:

@@ -98,7 +98,8 @@ follows the conventions below, with the library's checker settings. Its guide is
 (`tools/strom_tools/__init__.py`): the layers and their import order, and how a tool or a hook is added.
 
 - foundations: `tool_error` (`ToolError`, what a tool could not do), `json_objects` (JSON narrowed without `Any`)
-- `workspace`: the repository as a value (`Repository`), every call of git and of make, process groups
+- `workspace`: the repository as a value (`Repository`), every call of git and of make, and every process a tool starts
+  (`processes`: in a group of its own that a timeout kills, its outcome a `ProcessRun`)
 - the tools, which import nothing of each other: `change_checks` (skill `validate-change`), `example_scripts`,
   `docs_check`, `renames`, `sessions`
 - entry points: `hooks` (the handlers and their dispatcher) and `commands` (one per script); only they read arguments or

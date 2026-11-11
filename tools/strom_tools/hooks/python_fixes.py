@@ -13,9 +13,11 @@ What ruff reports goes back to Claude."""
 
 from pathlib import Path
 
-from strom_tools.hooks.hook_events import Block, HookResult, ToolUsed, TurnEnded
+from strom_tools.hooks.hook_events import ToolUsed, TurnEnded
+from strom_tools.hooks.hook_results import Block, HookResult
 from strom_tools.workspace import git_files
-from strom_tools.workspace.make_targets import MakeRun, problems, run_make
+from strom_tools.workspace.make_runs import problems, run_make
+from strom_tools.workspace.processes import ProcessRun
 from strom_tools.workspace.repository import Repository
 
 _PYTHON = (".py", ".pyi")
@@ -43,6 +45,6 @@ def at_stop(repository: Repository, event: TurnEnded) -> HookResult:
     return _reported(run_make(repository, "fix", "lint-python", f"FILES={' '.join(files)}"), "in the changed files")
 
 
-def _reported(run: MakeRun, where: str) -> HookResult:
+def _reported(run: ProcessRun, where: str) -> HookResult:
     errors = problems(run)
     return Block(f"ruff check {where}:\n{errors}") if errors else None

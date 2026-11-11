@@ -6,17 +6,8 @@ import pytest
 from tool_helpers import make_calls, with_makefile, write
 
 from strom_tools.hooks import dispatcher
-from strom_tools.hooks.hook_events import (
-    Block,
-    Failed,
-    HookResult,
-    Note,
-    Session,
-    SessionEnded,
-    SessionStarted,
-    ToolUsed,
-    TurnEnded,
-)
+from strom_tools.hooks.hook_events import Session, SessionEnded, SessionStarted, ToolUsed, TurnEnded
+from strom_tools.hooks.hook_results import Block, Failed, HookResult, Note
 from strom_tools.workspace.repository import Repository
 
 SESSION = Session("abcd", None)

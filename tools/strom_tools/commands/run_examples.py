@@ -62,13 +62,12 @@ def main(argv: Sequence[str]) -> int:
     failed: list[str] = []
     for example in examples:
         started_at = time.perf_counter()
-        outcome, stdout, stderr = (
-            example_scripts.check_types(repository, example) if check_types else example_scripts.run(example)
-        )
-        print(f"{example.name}: {outcome} ({time.perf_counter() - started_at:.1f} s)", flush=True)
-        if outcome != example_scripts.OK:
+        outcome = example_scripts.check_types(repository, example) if check_types else example_scripts.run(example)
+        run_time = time.perf_counter() - started_at
+        print(f"{example.name}: {example_scripts.described(outcome)} ({run_time:.1f} s)", flush=True)
+        if not isinstance(outcome, example_scripts.Passed):
             failed.append(example.name)
-            print(f"--- stdout\n{stdout}--- stderr\n{stderr}", end="", flush=True)
+            print(example_scripts.shown_output(outcome), end="", flush=True)
     if failed:
         print(f"failed: {', '.join(failed)}", file=sys.stderr)
     return 1 if failed else 0

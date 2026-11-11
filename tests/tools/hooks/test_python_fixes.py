@@ -2,7 +2,8 @@ from pathlib import Path
 
 from tool_helpers import commit, make_calls, with_makefile, write
 
-from strom_tools.hooks.hook_events import Block, Session, ToolUsed, TurnEnded
+from strom_tools.hooks.hook_events import Session, ToolUsed, TurnEnded
+from strom_tools.hooks.hook_results import Block
 from strom_tools.hooks.python_fixes import after_edit, at_stop
 from strom_tools.workspace.repository import Repository
 

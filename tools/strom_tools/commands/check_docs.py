@@ -27,7 +27,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from strom_tools.commands import command_line
-from strom_tools.docs_check import docs, known, problems
+from strom_tools.docs_check import docs, known, problems, rendered
 from strom_tools.workspace.repository import this_repository
 
 
@@ -42,5 +42,5 @@ def main(argv: Sequence[str]) -> int:
         problem for doc in [file.resolve() for file in files] or docs(repository) for problem in problems(doc, citable)
     ]
     for problem in found:
-        print(problem)
+        print(rendered(problem))
     return 1 if found else 0

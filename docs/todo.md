@@ -97,8 +97,12 @@ Remove a task once it is done; decisions it led to go to `docs/decisions.md`.
 
 - [ ] A Stop that one handler blocks while another one has a note (a context summary in a turn whose stop ruff or the
   docs check block): the hook command prints both, and the hooks reference says the JSON is read beside exit code 2
-  (`strom_tools.hooks.hook_events`). Observe it once on a running session: whether the note shows at the blocked stop,
+  (`strom_tools.hooks.hook_results`). Observe it once on a running session: whether the note shows at the blocked stop,
   and again at the next one.
 - [ ] With the `deny` rule for the staging commands in `.claude/settings.json` (`docs/decisions.md`, Index): whether it
   also stops the baseline recipe of `.claude/rules/tooling.md`, which runs `git add` on a scratch index
   (`GIT_INDEX_FILE`). If so, that recipe becomes the baseline command of `docs/plans/retro-review.md`, S2.
+- [ ] The hook command for a Bash event takes 71 ms, 7 ms more than before the review of the tools (`docs/decisions.md`,
+  Tool package): most of it imports `strom_tools.sessions.transcripts` for `loaded_natively`. Measure whether moving the
+  raw scan out of `transcripts` (or importing it in `after_bash`) takes it back, against the clarity of one module for
+  the transcripts.

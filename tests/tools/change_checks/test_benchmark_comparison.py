@@ -6,18 +6,22 @@ from hypothesis import strategies as st
 from tool_helpers import QUICK_BENCHMARK, with_benchmark
 
 from strom_tools.change_checks.benchmark_comparison import (
+    Compared,
     Row,
+    RunDone,
+    Side,
     _Benchmark,
+    _compared,
+    _interleaved,
     _mann_whitney_p,
     _metric_values,
     _spread,
-    compared,
+    comparison,
     cpu_set,
-    interleaved,
     measure,
     table,
 )
-from strom_tools.change_checks.revisions import Commit, WorkingTree, library_copy
+from strom_tools.change_checks.revisions import Commit, Revision, WorkingTree, library_copy
 from strom_tools.tool_error import ToolError
 from strom_tools.workspace.repository import Repository
 
@@ -41,6 +45,22 @@ def test_a_run_measures_the_working_trees_benchmarks_with_a_copy_of_the_library(
     assert measure(repository, working, tmp_path / "c.json", "min", QUICK_BENCHMARK)["cost: test_cost"] > 0
     with pytest.raises(ToolError, match=r"benchmark run failed \(returncode=5\)"):
         measure(repository, working, tmp_path / "d.json", "min", [*QUICK_BENCHMARK, "-k", "no_such_benchmark"])
+
+
+def test_a_comparison_yields_each_run_and_then_the_rows(repository: Repository) -> None:
+    """pytest-benchmark runs here, as in the test above: two runs per side, the metric a constant of each library."""
+    pytest.importorskip("pytest_benchmark")
+    with_benchmark(repository)
+    revisions: dict[Side, Revision] = {"A": Commit("HEAD"), "B": WorkingTree()}
+    *runs, last = comparison(repository, revisions, 2, "us_per_input", QUICK_BENCHMARK)
+    assert [(run.run, run.side, run.num_benchmarks) for run in runs if isinstance(run, RunDone)] == [
+        (0, "A", 1),
+        (0, "B", 1),
+        (1, "B", 1),
+        (1, "A", 1),
+    ]
+    assert isinstance(runs[-1], RunDone) and runs[-1].left_time == 0
+    assert last == Compared([Row("cost: test_cost", 1.0, 0.0, 3.0, 0.0, _mann_whitney_p([1.0, 1.0], [3.0, 3.0]))])
 
 
 @given(samples, samples)
@@ -74,7 +94,7 @@ def test_cpu_set_reads_what_taskset_takes() -> None:
 
 
 def test_runs_are_interleaved_a_b_b_a() -> None:
-    assert list(interleaved(3)) == [(0, "A"), (0, "B"), (1, "B"), (1, "A"), (2, "A"), (2, "B")]
+    assert list(_interleaved(3)) == [(0, "A"), (0, "B"), (1, "B"), (1, "A"), (2, "A"), (2, "B")]
 
 
 def benchmark(stats: dict[str, float], extra_info: dict[str, float]) -> _Benchmark:
@@ -92,7 +112,7 @@ def test_a_metric_is_read_from_extra_info_or_the_stats() -> None:
 
 
 def test_the_table_compares_the_medians_of_both_sides() -> None:
-    rows = compared(
+    rows = _compared(
         {"io: run": [1.0, 2.0, 3.0], "cpu: idle": [0.0, 0.0]}, {"io: run": [4.0, 4.0, 5.0], "cpu: idle": [1.0, 1.0]}
     )
     assert rows[0] == Row("io: run", 2.0, 1.0, 4.0, 0.5, _mann_whitney_p([1.0, 2.0, 3.0], [4.0, 4.0, 5.0]))

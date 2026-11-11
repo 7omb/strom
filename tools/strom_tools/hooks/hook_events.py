@@ -1,22 +1,10 @@
-"""What a Claude Code hook gets and what it answers, as data.
+"""What a Claude Code hook gets, as data: Claude Code passes an event as JSON on stdin, and `parse` makes one of the
+`HookEvent` classes of it, with the fields the handlers use. What a hook answers: `hook_results`."""
 
-Claude Code passes an event as JSON on stdin; `parse` makes one of the `HookEvent` classes of it, with the fields
-the handlers use. A handler returns a `HookResult`, and `answer` turns the results of all handlers of an event
-into what the hook command prints and exits with: exit code 2 blocks and sends stderr to Claude; stdout holds one
-JSON object with the notes.
-
-A note beside a block is printed too. The hooks reference (read 2026-11-11) says of exit code 2: "Claude Code
-still reads the JSON output fields, but they can't override the block", and that a blocking decision in the JSON
-would replace stderr as the message: the JSON here holds none. Not observed on a running session; a handler whose
-note must not be lost returns it again while it holds (`friction_notes.at_stop`, until a stop that is not
-blocked), at the price of a note shown twice."""
-
-import json
-from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-from strom_tools.json_objects import JsonObject, member
+from strom_tools.json_objects import member
 
 
 @dataclass(frozen=True)
@@ -91,71 +79,3 @@ def _text(value: object) -> str | None:
 
 def _path(value: object) -> Path | None:
     return Path(value) if isinstance(value, str) else None
-
-
-def _name_of(event: HookEvent) -> str:
-    """The event as Claude Code names it."""
-    match event:
-        case ToolUsed():
-            return "PostToolUse"
-        case TurnEnded():
-            return "Stop"
-        case SessionStarted():
-            return "SessionStart"
-        case SessionEnded():
-            return "SessionEnd"
-
-
-@dataclass(frozen=True)
-class Block:
-    """Claude has to deal with `message` before it goes on."""
-
-    message: str
-
-
-@dataclass(frozen=True)
-class Note:
-    for_user: str | None = None
-    """Shown to the user."""
-    for_claude: str | None = None
-    """Added to Claude's context."""
-
-
-@dataclass(frozen=True)
-class Failed:
-    """A handler raised: `message` is reported, and nothing is blocked."""
-
-    message: str
-
-
-type HookResult = Block | Note | None
-"""What a handler returns; None: nothing to say."""
-
-
-@dataclass(frozen=True)
-class Answer:
-    exit_code: int
-    stdout: str
-    stderr: str
-
-
-def answer(event: HookEvent, results: Sequence[HookResult | Failed]) -> Answer:
-    """What the hook command answers Claude Code with: the messages of the blocks and failures on stderr, the
-    notes as one JSON object on stdout, and the exit code 2 if a handler blocks, else 1 if one failed."""
-    blocks = [result for result in results if isinstance(result, Block)]
-    failures = [result for result in results if isinstance(result, Failed)]
-    notes = [result for result in results if isinstance(result, Note)]
-    for_user = [note.for_user for note in notes if note.for_user is not None]
-    for_claude = [note.for_claude for note in notes if note.for_claude is not None]
-    output: JsonObject = {}
-    if for_user:
-        output["systemMessage"] = "\n\n".join(for_user)
-    if for_claude:
-        context: JsonObject = {"hookEventName": _name_of(event), "additionalContext": "\n\n".join(for_claude)}
-        output["hookSpecificOutput"] = context
-    told = [result.message for result in results if isinstance(result, Block | Failed)]
-    return Answer(
-        2 if blocks else 1 if failures else 0,
-        f"{json.dumps(output)}\n" if output else "",
-        "".join(f"{message}\n" for message in told),
-    )

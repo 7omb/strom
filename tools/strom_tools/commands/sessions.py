@@ -7,83 +7,85 @@ Run:  python bin/sessions.py list [-n N]                  sessions (newest last)
                                                           friction per session (default: the last 5)
       python bin/sessions.py mark-retro                   records a retrospective in the friction log
 
-The transcripts are `~/.claude/projects/<this path, non-alphanumerics as ->/*.jsonl` (`CLAUDE_CONFIG_DIR`
-replaces `~/.claude`), one JSON object per line; their format is Claude Code's own and not documented, so the
-reading is lenient. TERM is a case-insensitive regular expression.
+TERM is a case-insensitive regular expression. Where the transcripts are and how they are read:
+`strom_tools.sessions.transcripts`.
 
-Friction counts what cost a session round trips: hook blocks (`hook_blocks`), tool errors other than
-rejections (`tool_errors`), tool calls the user or the permission check rejected (`rejected`), interrupts by
-the user (`interrupts`; the calls an interrupt cancels are part of it, no rejections) and diagnostics the IDE
-attached after edits (`diagnostics`, often stale). `--since-retro` takes the sessions that went on after the
-last retrospective, and of each only what came after it; `--details` lists each piece of friction, the tool
-call and its answer; `--commands` the most frequent Bash command beginnings, candidates for a script or a make
-target.
-
-The friction log `.checks/friction.jsonl` gets a line when a session ends (written by the SessionEnd hook,
-`strom_tools.hooks.friction_notes`) and one per retrospective (`mark-retro`, run by the skill `retro`). A
-session's line counts what came after the log's last line about that session or, if later, the last
-retrospective: so the lines after a retrospective add up (the SessionStart hook sums them), also those of a
-session that was resumed or that ran the retrospective itself.
+`friction` shows a column per kind of friction (`strom_tools.sessions.friction.Kind`: hook blocks, tool errors,
+rejections, interrupts, IDE diagnostics). `--since-retro` takes the sessions that went on after the last
+retrospective, and of each only what came after it; `--details` lists each piece of friction, the tool call and
+its answer; `--commands` the most frequent Bash command beginnings, candidates for a script or a make target.
+`mark-retro` (run by the skill `retro`) starts the count of the friction log anew; what its lines count:
+`strom_tools.sessions.friction`.
 """
 
 import re
 from collections import Counter
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import datetime
+from enum import Enum
 from pathlib import Path
+from typing import assert_never
 
 from strom_tools.commands import command_line
 from strom_tools.sessions import friction, transcripts
+from strom_tools.sessions.friction import Kind
 from strom_tools.workspace.repository import Repository, this_repository
 
 _SHOWN = 300
 """How many characters of a call and of its answer `--details` shows."""
 
 
-def _show_list(repository: Repository, count: int) -> None:
-    for path in transcripts.transcripts(repository)[-count:]:
+def _show_list(repository: Repository, num_sessions: int) -> None:
+    for path in transcripts.transcripts(repository)[-num_sessions:]:
         found = list(transcripts.prompts(path))
-        started = found[0][0] if found else ""
+        started_at = transcripts.minute(found[0].at) if found else ""
         size = path.stat().st_size // 1024
-        print(f"{path.stem[:8]}  {started:16}  {size:6} KB  {len(found):3} prompts  {transcripts.title(path)}")
+        print(f"{path.stem[:8]}  {started_at:16}  {size:6} KB  {len(found):3} prompts  {transcripts.title(path)}")
 
 
-def _show_search(repository: Repository, term: str, count: int, *, everything: bool) -> None:
+def _show_search(repository: Repository, term: str, num_sessions: int, *, everything: bool) -> None:
     pattern = re.compile(term, re.IGNORECASE)
-    for path in transcripts.transcripts(repository)[-count:]:
-        for at, who, text in transcripts.texts(path, everything=everything):
-            for match in pattern.finditer(text):
+    for path in transcripts.transcripts(repository)[-num_sessions:]:
+        for said in transcripts.texts(path, everything=everything):
+            for match in pattern.finditer(said.text):
                 start = max(0, match.start() - 150)
-                excerpt = " ".join(text[start : match.end() + 150].split())
-                print(f"{path.stem[:8]} {at} {who}: …{excerpt}…")
+                excerpt = " ".join(said.text[start : match.end() + 150].split())
+                print(f"{path.stem[:8]} {transcripts.minute(said.at)} {said.author.name}: …{excerpt}…")
 
 
 def _show_friction(paths: Sequence[Path], since: datetime | None, *, details: bool, commands: bool) -> None:
     if since is not None:
         print(f"since the retrospective of {since:%Y-%m-%d %H:%M} (UTC)")
     found = {path: list(friction.events(path, since)) for path in paths}
-    print("session   " + "  ".join(f"{kind:>11}" for kind in friction.KINDS))
+    print("session   " + "  ".join(f"{kind.value:>11}" for kind in Kind))
     for path, session_events in found.items():
-        counts = Counter(event.kind for event in session_events)
-        print(f"{path.stem[:8]}  " + "  ".join(f"{counts[kind]:11}" for kind in friction.KINDS))
+        counts = friction.counted(session_events)
+        print(f"{path.stem[:8]}  " + "  ".join(f"{counts[kind]:11}" for kind in Kind))
     if details:
         for path, session_events in found.items():
             for event in session_events:
-                print(
-                    f"\n{path.stem[:8]} {event.at[:16]} {event.kind}: {_shown(event.call)}\n    {_shown(event.answer)}"
-                )
+                at, kind = transcripts.minute(event.at), event.kind.value
+                print(f"\n{path.stem[:8]} {at} {kind}: {_shown(event.call)}\n    {_shown(event.answer)}")
     if commands:
         total = Counter[str]()
         for path in paths:
             total.update(friction.command_beginnings(path, since))
         print("\nmost frequent Bash commands (first two words):")
-        for command, times in total.most_common(25):
-            print(f"{times:5}  {command}")
+        for command, num_uses in total.most_common(25):
+            print(f"{num_uses:5}  {command}")
 
 
 def _shown(text: str) -> str:
     """`text` on one line, its first `_SHOWN` characters."""
     return " ".join(text.split())[:_SHOWN]
+
+
+class _Action(Enum):
+    LIST = "list"
+    PROMPTS = "prompts"
+    SEARCH = "search"
+    FRICTION = "friction"
+    MARK_RETRO = "mark-retro"
 
 
 def main(argv: Sequence[str]) -> int:
@@ -105,37 +107,33 @@ def main(argv: Sequence[str]) -> int:
     counting.add_argument("--commands", action="store_true", help="the most frequent Bash command beginnings")
     actions.add_parser("mark-retro")
     args = parser.parse_args(argv)
-    action: str = args.action
+    chosen: str = args.action
+    action = _Action(chosen)
     repository = this_repository()
     match action:
-        case "list":
-            count: int = args.n
-            _show_list(repository, count)
-        case "prompts":
+        case _Action.LIST:
+            num_listed: int = args.n
+            _show_list(repository, num_listed)
+        case _Action.PROMPTS:
             session: str = args.session
-            for at, text in transcripts.prompts(transcripts.find(repository, session)):
-                print(f"[{at}] {text}\n")
-        case "search":
+            for said in transcripts.prompts(transcripts.find(repository, session)):
+                print(f"[{transcripts.minute(said.at)}] {said.text}\n")
+        case _Action.SEARCH:
             term: str = args.term
-            last: int = args.n
+            num_searched: int = args.n
             everything: bool = args.all
-            _show_search(repository, term, last, everything=everything)
-        case "friction":
+            _show_search(repository, term, num_searched, everything=everything)
+        case _Action.FRICTION:
             prefixes: list[str] = args.sessions
-            recent_count: int = args.n
+            num_recent: int = args.n
             since_retro: bool = args.since_retro
             details: bool = args.details
             commands: bool = args.commands
             since = friction.last_logged(repository) if since_retro else None
-            paths = [transcripts.find(repository, prefix) for prefix in prefixes]
-            if not paths:
-                recent = transcripts.transcripts(repository)
-                paths = (
-                    recent[-recent_count:]
-                    if since is None
-                    else [path for path in recent if datetime.fromtimestamp(path.stat().st_mtime, UTC) > since]
-                )
+            paths = friction.covered(repository, prefixes, num_recent, since)
             _show_friction(paths, since, details=details, commands=commands)
-        case _:
+        case _Action.MARK_RETRO:
             friction.log_retro(repository)
+        case _:
+            assert_never(action)
     return 0

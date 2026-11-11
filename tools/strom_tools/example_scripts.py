@@ -4,23 +4,88 @@ What an example has to be, and how it is run and type-checked: `strom_tools.comm
 
 import json
 import re
-import subprocess
 import sys
 import tempfile
-import tomllib
+from dataclasses import dataclass
 from pathlib import Path
 
-from strom_tools.json_objects import is_list, member
 from strom_tools.tool_error import ToolError
-from strom_tools.workspace.process_groups import run_detached
+from strom_tools.workspace.processes import output, run_checked, run_process
 from strom_tools.workspace.repository import Repository
 
 _TIMEOUT = 120.0  # seconds per example (the first run of a script also installs its environment)
 _TIMEOUTS: dict[str, float] = {}  # per example (file name), where the default does not fit
-OK = "ok"
-"""The outcome of an example that ran, or type-checked, as expected."""
 _SCRIPT_BLOCK = re.compile(r"(?m)^# /// script$\s(?P<content>(^#(| .*)$\s)+)^# ///$")  # PEP 723's own regex
 _LOCK_COMMAND = "python bin/run_examples.py --lock"
+
+
+@dataclass(frozen=True)
+class Passed:
+    """It ran, or type-checked, as expected."""
+
+    stdout: str = ""
+    stderr: str = ""
+
+
+@dataclass(frozen=True)
+class StaleLock:
+    """Its lock file does not fit its header (or strom's dependency groups): it did not run."""
+
+    lock: str
+    """The lock file's name."""
+
+
+@dataclass(frozen=True)
+class Failed:
+    exit_code: int
+    stdout: str
+    stderr: str
+
+
+@dataclass(frozen=True)
+class TimedOut:
+    timeout: float
+    """Seconds."""
+    stdout: str
+    stderr: str
+
+
+@dataclass(frozen=True)
+class TypeErrors:
+    checkers: tuple[str, ...]
+    """The checkers that reported some."""
+    output: str
+    """Theirs, each under a line `--- CHECKER`."""
+
+
+type Outcome = Passed | StaleLock | Failed | TimedOut | TypeErrors
+
+
+def described(outcome: Outcome) -> str:
+    """The outcome in a few words: `ok`, a stale lock and how to update it, `exit code N`, `timeout after N s`,
+    `type errors (CHECKER, ...)`."""
+    match outcome:
+        case Passed():
+            return "ok"
+        case StaleLock(lock):
+            return f"stale lock {lock} (update: {_LOCK_COMMAND})"
+        case Failed(exit_code):
+            return f"exit code {exit_code}"
+        case TimedOut(timeout):
+            return f"timeout after {timeout:g} s"
+        case TypeErrors(checkers):
+            return f"type errors ({', '.join(checkers)})"
+
+
+def shown_output(outcome: Outcome) -> str:
+    """What the example or the checkers wrote, under the lines `--- stdout` and `--- stderr`."""
+    match outcome:
+        case Passed(stdout, stderr) | Failed(_, stdout, stderr) | TimedOut(_, stdout, stderr):
+            return f"--- stdout\n{stdout}--- stderr\n{stderr}"
+        case StaleLock():
+            return "--- stdout\n--- stderr\n"
+        case TypeErrors(_, output):
+            return f"--- stdout\n{output}--- stderr\n"
 
 
 def examples(repository: Repository, names: list[str]) -> list[Path]:
@@ -37,60 +102,55 @@ def examples(repository: Repository, names: list[str]) -> list[Path]:
     return [every[name] for name in wanted]
 
 
-def _dependencies(example: Path) -> list[str]:
-    """The dependencies its script header declares; a `ToolError` if it has no header (every example is a uv
-    script)."""
-    match = _SCRIPT_BLOCK.search(example.read_text(encoding="utf-8"))
-    if match is None:
+def _require_header(example: Path) -> None:
+    """A `ToolError` unless the example has a script header: every example is a uv script."""
+    if _SCRIPT_BLOCK.search(example.read_text(encoding="utf-8")) is None:
         raise ToolError(f"{example.name}: no `# /// script` header (see `bin/run_examples.py --help`)")
-    block: str = match["content"]
-    content = "".join(line[2:] if line.startswith("# ") else line[1:] for line in block.splitlines(True))
-    header: object = tomllib.loads(content)
-    declared = member(header, "dependencies")
-    return [str(dependency) for dependency in declared] if is_list(declared) else []
 
 
-def run(example: Path) -> tuple[str, str, str]:
-    """Runs one example; its outcome (`OK`, a stale lock, `exit code N` or `timeout after N s`), stdout and
-    stderr."""
+def run(example: Path) -> Passed | StaleLock | Failed | TimedOut:
+    """Runs one example (unless its lock is stale)."""
     if (stale := _stale_lock(example)) is not None:
-        return stale, "", ""
+        return stale
     command = ["uv", "run", "--script", "--locked", "--quiet", "--python", sys.executable, str(example)]
     timeout = _TIMEOUTS.get(example.name, _TIMEOUT)
     with tempfile.TemporaryDirectory() as cwd:
-        ran = run_detached(command, cwd=Path(cwd), timeout=timeout)
-    if ran.returncode is None:
-        return f"timeout after {timeout:g} s", ran.stdout, ran.stderr
-    return (OK if ran.returncode == 0 else f"exit code {ran.returncode}"), ran.stdout, ran.stderr
+        ran = run_process(command, cwd=Path(cwd), timeout=timeout)
+    match ran.returncode:
+        case None:
+            return TimedOut(timeout, ran.stdout, ran.stderr)
+        case 0:
+            return Passed(ran.stdout, ran.stderr)
+        case exit_code:
+            return Failed(exit_code, ran.stdout, ran.stderr)
 
 
-def _stale_lock(example: Path) -> str | None:
+def _stale_lock(example: Path) -> StaleLock | None:
     """None if the example's lock file fits its header (and strom's `pyproject.toml`, whose dependency groups it
-    records), else the outcome that says how to update it. A `ToolError` for an example without a header."""
-    _dependencies(example)
-    check = subprocess.run(["uv", "lock", "--script", str(example), "--check", "--quiet"], capture_output=True)
-    return None if check.returncode == 0 else f"stale lock {example.name}.lock (update: {_LOCK_COMMAND})"
+    records). A `ToolError` for an example without a header."""
+    _require_header(example)
+    check = run_process(["uv", "lock", "--script", str(example), "--check", "--quiet"], cwd=example.parent)
+    return None if check.returncode == 0 else StaleLock(f"{example.name}.lock")
 
 
 def lock(example: Path) -> None:
     """Updates the lock file of an example (`uv lock --script`)."""
-    _dependencies(example)
-    subprocess.run(["uv", "lock", "--script", str(example)], check=True)
+    _require_header(example)
+    run_checked(["uv", "lock", "--script", str(example)], cwd=example.parent)
 
 
-def check_types(repository: Repository, example: Path) -> tuple[str, str, str]:
+def check_types(repository: Repository, example: Path) -> Passed | StaleLock | TypeErrors:
     """mypy, pyright and ty on one example, with the options of the repository's `pyproject.toml` against its
-    script's environment; `OK` or the tools that failed, their output, and nothing for stderr."""
+    script's environment."""
     if (stale := _stale_lock(example)) is not None:
-        return stale, "", ""
-    subprocess.run(
-        ["uv", "sync", "--script", str(example), "--locked", "--quiet", "--python", sys.executable], check=True
-    )
+        return stale
+    sync = ["uv", "sync", "--script", str(example), "--locked", "--quiet", "--python", sys.executable]
+    run_checked(sync, cwd=example.parent)
     python_of = ["uv", "python", "find", "--script", str(example)]  # the environment `uv sync` just made
-    python = subprocess.run(python_of, check=True, capture_output=True, text=True).stdout.strip()
+    python = run_checked(python_of, cwd=example.parent).strip()
     environment = Path(python).parent.parent
     failed: list[str] = []
-    output = ""
+    reported = ""
     with tempfile.TemporaryDirectory() as config_dir:
         # pyright's `venv` in pyproject.toml outranks `--pythonpath`: a config of its own names the environment
         pyright_config = Path(config_dir) / "pyrightconfig.json"
@@ -106,8 +166,8 @@ def check_types(repository: Repository, example: Path) -> tuple[str, str, str]:
             "ty": ["ty", "check", "--python", python, str(example)],
         }
         for tool, command in tools.items():
-            result = subprocess.run(command, cwd=repository.root, capture_output=True, text=True)
+            result = run_process(command, cwd=repository.root)
             if result.returncode != 0:
                 failed.append(tool)
-                output += f"--- {tool}\n{result.stdout}{result.stderr}"
-    return (OK if not failed else f"type errors ({', '.join(failed)})"), output, ""
+                reported += f"--- {tool}\n{output(result)}"
+    return TypeErrors(tuple(failed), reported) if failed else Passed()

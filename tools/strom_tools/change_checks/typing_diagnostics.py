@@ -8,13 +8,14 @@ mypy from this interpreter, pyright and ty from PATH."""
 
 import json
 import re
-import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
+from enum import Enum
 from pathlib import Path
 from typing import NotRequired, TypedDict
 
 from strom_tools.tool_error import ToolError
+from strom_tools.workspace.processes import output, run_process
 
 _MYPY_LINE = re.compile(r"^(?P<file>[^:\s]+):\d+(?::\d+)?: (?P<severity>error|warning|note): (?P<message>.*)$")
 _TY_LINE = re.compile(r"^(?P<file>[^:\s]+):\d+:\d+: (?P<severity>error|warning)\[(?P<rule>[^\]]+)\] (?P<message>.*)$")
@@ -35,9 +36,9 @@ class _PyrightReport(TypedDict):
 
 def _output(tool: str, command: Sequence[str], summary: str, root: Path) -> str:
     """Stdout of a checker that ran in `root`: exit code 0 or 1 (diagnostics found), and a line matching `summary`."""
-    result = subprocess.run(command, cwd=root, capture_output=True, text=True)
+    result = run_process(command, cwd=root)
     if result.returncode not in (0, 1) or re.search(summary, result.stdout, re.MULTILINE) is None:
-        raise ToolError(f"{tool} did not run (exit code {result.returncode}):\n{result.stdout}{result.stderr}")
+        raise ToolError(f"{tool} did not run (exit code {result.returncode}):\n{output(result)}")
     return result.stdout
 
 
@@ -78,9 +79,27 @@ def _ty_lines(output: str) -> list[str]:
     return [match.expand(r"ty \g<file>: \g<severity>[\g<rule>]: \g<message>") for match in matches if match is not None]
 
 
-TOOLS: Mapping[str, Callable[[Path], list[str]]] = {"mypy": _mypy, "pyright": _pyright, "ty": _ty}
+class Checker(Enum):
+    """A type checker, by the name its diagnostics start with."""
+
+    MYPY = "mypy"
+    PYRIGHT = "pyright"
+    TY = "ty"
 
 
-def diagnostics(tools: Sequence[str], root: Path) -> list[str]:
-    """The diagnostics of the checkers `tools` (keys of `TOOLS`) for the project in `root`."""
-    return [line for tool in tools for line in TOOLS[tool](root)]
+_RUNS: Mapping[Checker, Callable[[Path], list[str]]] = {
+    Checker.MYPY: _mypy,
+    Checker.PYRIGHT: _pyright,
+    Checker.TY: _ty,
+}
+
+
+def diagnostics(checkers: Sequence[Checker], root: Path) -> list[str]:
+    """The diagnostics of `checkers` for the project in `root`."""
+    return [line for checker in checkers for line in _RUNS[checker](root)]
+
+
+def checker_of(line: str) -> Checker | None:
+    """The checker a line of `diagnostics` comes from; None for a line that is none."""
+    name = line.split(" ", 1)[0]
+    return next((checker for checker in Checker if checker.value == name), None)

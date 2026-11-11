@@ -1,12 +1,12 @@
 """The tests against a copy of the code with an injected bug: whether they catch it.
 
-The code (`_MUTABLE` of the working tree), the tests and `pyproject.toml` are copied into a directory, and pytest
-runs there, with the copy of the library first on PYTHONPATH and in its own process group (injected bugs often
-hang, so a timeout kills the whole group, pool workers included). The same tests run on the copy without the bug
-first: they must pass there, so that a failure means the bug was caught. Nothing in the repository changes, also
-not its caches or Hypothesis database."""
+The library (`src/` of the working tree), the tools (`_MUTABLE`), the tests and `pyproject.toml` are copied into a
+directory, and pytest runs there, with the copy of the library first on PYTHONPATH (`library_copy` checks that
+`import strom` finds it) and in its own process group (injected bugs often hang, a join waiting forever, so a
+timeout kills the whole group, pool workers included). The same tests run on the copy without the bug first: they
+must pass there, so that a failure means the bug was caught (not a test that fails anyway, nor a missing pytest).
+Nothing in the repository changes, also not its caches or Hypothesis database."""
 
-import sys
 from collections.abc import Sequence
 from dataclasses import dataclass
 from enum import Enum
@@ -15,7 +15,7 @@ from pathlib import Path
 from strom_tools.change_checks.revisions import Revision, WorkingTree, export, library_copy, python_path_env
 from strom_tools.tool_error import ToolError
 from strom_tools.workspace import git_files
-from strom_tools.workspace.process_groups import DetachedRun, run_detached
+from strom_tools.workspace.processes import ProcessRun, pytest_command, run_process
 from strom_tools.workspace.repository import Repository
 
 _MUTABLE = ["tools", "bin", ".claude/hooks"]
@@ -56,9 +56,9 @@ def _inject(copy: Path, bug: Bug) -> None:
 
 @dataclass(frozen=True)
 class Trial:
-    clean: DetachedRun
+    clean: ProcessRun
     """The tests on the copy without the bug."""
-    mutant: DetachedRun | None
+    mutant: ProcessRun | None
     """The tests on the copy with the bug; None if they did not pass without it."""
 
 
@@ -69,13 +69,13 @@ class Verdict(Enum):
     """Every test passed."""
     HUNG = "hung"
     """Killed after the timeout."""
-    NONE = "no verdict"
+    UNDECIDED = "no verdict"
     """The tests do not pass without the bug, or pytest ended otherwise (e.g. a collection error)."""
 
 
 def verdict(trial: Trial) -> Verdict:
     if trial.mutant is None:
-        return Verdict.NONE
+        return Verdict.UNDECIDED
     match trial.mutant.returncode:
         case 1:
             return Verdict.CAUGHT
@@ -84,7 +84,17 @@ def verdict(trial: Trial) -> Verdict:
         case None:
             return Verdict.HUNG
         case _:
-            return Verdict.NONE
+            return Verdict.UNDECIDED
+
+
+def ended(run: ProcessRun) -> str:
+    """How a run of the tests ended: `hung`, or `exit code N`."""
+    return "hung" if run.returncode is None else f"exit code {run.returncode}"
+
+
+def failed_tests(run: ProcessRun) -> list[str]:
+    """pytest's lines about the tests that failed or erred in a run."""
+    return [line for line in run.stdout.splitlines() if line.startswith(("FAILED", "ERROR"))]
 
 
 def try_bug(
@@ -92,15 +102,15 @@ def try_bug(
 ) -> Trial:
     """Runs the tests of `tests_from` in the empty directory `copy`, without the bug and, if they pass, with it;
     each run ends after `timeout` seconds at the latest."""
-    command = [sys.executable, "-m", "pytest", "-p", "no:cacheprovider", *(pytest_args or _DEFAULT_PYTEST_ARGS)]
+    command = pytest_command(*(pytest_args or _DEFAULT_PYTEST_ARGS))
     src = library_copy(repository, WorkingTree(), copy)
     export(repository, WorkingTree(), _MUTABLE, copy)
     export(repository, tests_from, ["tests", "pyproject.toml"], copy)
     # no bytecode of the clean run: a bug of the same length, injected within the second of the file's
     # modification time, would run from the cache of the code without it
     env = {**python_path_env(src), "PYTHONDONTWRITEBYTECODE": "1"}
-    clean = run_detached(command, cwd=copy, timeout=timeout, env=env)
+    clean = run_process(command, cwd=copy, timeout=timeout, env=env)
     if clean.returncode != 0:
         return Trial(clean, None)
     _inject(copy, bug)
-    return Trial(clean, run_detached(command, cwd=copy, timeout=timeout, env=env))
+    return Trial(clean, run_process(command, cwd=copy, timeout=timeout, env=env))

@@ -4,11 +4,12 @@ from pathlib import Path
 import pytest
 
 from strom_tools.change_checks.typing_diagnostics import (
-    TOOLS,
+    Checker,
     _mypy,
     _mypy_lines,
     _pyright_lines,
     _ty_lines,
+    checker_of,
     diagnostics,
 )
 from strom_tools.tool_error import ToolError
@@ -63,7 +64,6 @@ def test_ty_lines_keep_file_severity_rule_and_message() -> None:
 
 def test_a_checker_that_does_not_run_is_an_error_not_a_clean_result(tmp_path: Path) -> None:
     """mypy without a configuration and without files to check exits with 2."""
-    assert set(TOOLS) == {"mypy", "pyright", "ty"}
     with pytest.raises(ToolError, match=r"mypy did not run \(exit code 2\)"):
         _mypy(tmp_path)
 
@@ -81,15 +81,21 @@ def project(tmp_path: Path) -> Path:
 def test_each_checker_reports_the_error_of_a_project(project: Path) -> None:
     """The checkers themselves run here: their output formats are theirs to change."""
     (project / "wrong.py").write_text("def name() -> str:\n    return 1\n")
-    found = diagnostics(["mypy", "pyright", "ty"], project)
+    found = diagnostics(list(Checker), project)
     assert [line.split(": ", 2)[:2] for line in found] == [
         ["mypy wrong.py", "error"],
         ["pyright wrong.py", "error[reportReturnType]"],
         ["ty wrong.py", "error[invalid-return-type]"],
     ]
-    assert diagnostics(["ty"], project) == found[2:], "only the tools asked for"
+    assert [checker_of(line) for line in found] == list(Checker)
+    assert diagnostics([Checker.TY], project) == found[2:], "only the checkers asked for"
 
 
 def test_each_checker_reports_nothing_for_a_clean_project(project: Path) -> None:
     (project / "wrong.py").write_text('def name() -> str:\n    return "one"\n')
-    assert diagnostics(["mypy", "pyright", "ty"], project) == []
+    assert diagnostics(list(Checker), project) == []
+
+
+def test_a_line_names_its_checker_first() -> None:
+    assert checker_of("pyright src/a.py: error[rule]: a message") is Checker.PYRIGHT
+    assert checker_of("pylint src/a.py: error: a message") is None

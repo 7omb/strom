@@ -6,13 +6,17 @@ context.
               `_MIN_SESSIONS`) it tells the user and Claude to run the skill `retro`.
   `at_stop`   tells the user, once per summary of the session's context, that a new session starts smaller."""
 
-from strom_tools.hooks.hook_events import HookResult, Note, SessionEnded, SessionStarted, TurnEnded
+from collections.abc import Sequence
+
+from strom_tools.hooks.hook_events import SessionEnded, SessionStarted, TurnEnded
+from strom_tools.hooks.hook_results import HookResult, Note
 from strom_tools.sessions import friction
+from strom_tools.sessions.friction import Kind, SessionLogged
 from strom_tools.sessions.transcripts import summaries
 from strom_tools.workspace.repository import Repository
 
 _MIN_SESSIONS = 3
-_THRESHOLDS = {"hook_blocks": 40, "tool_errors": 25, "rejected": 4, "interrupts": 6}
+_THRESHOLDS = {Kind.HOOK_BLOCKS: 40, Kind.TOOL_ERRORS: 25, Kind.REJECTED: 4, Kind.INTERRUPTS: 6}
 """Sums since the last retrospective; reaching any one suggests the next."""
 
 
@@ -26,10 +30,14 @@ def at_end(repository: Repository, event: SessionEnded) -> HookResult:
 def at_start(repository: Repository, event: SessionStarted) -> HookResult:
     if event.source not in ("startup", "clear"):
         return None
-    logged = friction.since_last_retro(repository)
-    totals = {key: sum(int(str(entry.get(key, 0))) for entry in logged) for key in _THRESHOLDS}
-    reached = [f"{totals[key]} {key}" for key, limit in _THRESHOLDS.items() if totals[key] >= limit]
-    num_sessions = len({entry.get("session") for entry in logged})
+    return _suggestion(friction.since_last_retro(repository))
+
+
+def _suggestion(logged: Sequence[SessionLogged]) -> HookResult:
+    """A note to run the skill `retro`, if the sessions' lines since the last retrospective reach a threshold."""
+    totals = {kind: sum(line.counts[kind] for line in logged) for kind in _THRESHOLDS}
+    reached = [f"{totals[kind]} {kind.value}" for kind, limit in _THRESHOLDS.items() if totals[kind] >= limit]
+    num_sessions = len({line.session for line in logged})
     if num_sessions < _MIN_SESSIONS or not reached:
         return None
     note = (

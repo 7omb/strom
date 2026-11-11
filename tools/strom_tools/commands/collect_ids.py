@@ -15,18 +15,21 @@ from pathlib import Path
 
 from strom_tools.change_checks.collected_ids import collected
 from strom_tools.change_checks.revisions import python_path_env
-from strom_tools.commands import command_line, snapshots
+from strom_tools.commands import command_line, snapshot_commands
 from strom_tools.workspace.repository import this_repository
 
 
 def main(argv: Sequence[str]) -> int:
     own, pytest_args = command_line.split_passthrough(argv)
     parser = command_line.parser(__doc__)
-    snapshots.add_arguments(parser)
+    snapshot_commands.add_arguments(parser)
     args = parser.parse_args(own)
+    repository = this_repository()
+    asked = snapshot_commands.request(repository, parser, args)
     command_line.require_modules("pytest")
 
-    def ids_in(root: Path, is_copy: bool) -> list[str]:
-        return collected(pytest_args, root, python_path_env(root / "src") if is_copy else None)
+    def ids_in(root: Path) -> list[str]:
+        # the library of `root` first: a copy's, or in the repository the one its editable install points to
+        return collected(pytest_args, root, python_path_env(root / "src"))
 
-    return snapshots.save_or_diff(this_repository(), parser, args, kind="collect-ids", what="IDs", lines_in=ids_in)
+    return snapshot_commands.save_or_diff(repository, asked, kind="collect-ids", what="IDs", lines_in=ids_in)

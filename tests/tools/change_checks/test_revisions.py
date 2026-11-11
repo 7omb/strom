@@ -9,7 +9,7 @@ from strom_tools.change_checks.revisions import (
     Index,
     Revision,
     WorkingTree,
-    _named,
+    as_argument,
     checkout,
     export,
     library_copy,
@@ -47,7 +47,7 @@ def test_parse_names_the_working_tree_the_index_and_commits(three_states: Reposi
     assert parse(three_states, ":index") == Index()
     assert parse(three_states, "HEAD") == Commit("HEAD")
     for revision in (".", ":index", "main"):
-        assert _named(parse(three_states, revision)) == revision
+        assert as_argument(parse(three_states, revision)) == revision
 
 
 def test_parse_rejects_what_is_no_commit(three_states: Repository) -> None:

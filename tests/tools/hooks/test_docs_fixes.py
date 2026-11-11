@@ -3,14 +3,23 @@ import os
 from tool_helpers import make_calls, with_makefile, write
 
 from strom_tools.docs_check import UNTRACKED
-from strom_tools.hooks.docs_fixes import _formatted_mark, at_stop
-from strom_tools.hooks.hook_events import Block, Note, Session, TurnEnded
+from strom_tools.hooks.docs_fixes import _formatted, _verdict, at_stop
+from strom_tools.hooks.hook_events import Session, TurnEnded
+from strom_tools.hooks.hook_results import Block, Note
+from strom_tools.hooks.memos import remembered_at
 from strom_tools.workspace.repository import Repository
 
 STOP = TurnEnded(Session("abcd", None), again=False)
 NEW_FILE = f"docs/a.md:3: tools/new.py{UNTRACKED}\n"
 NEW_NAME = f"docs/a.md:4: strom_tools.new.name{UNTRACKED}\n"
 """Lines of the docs check about citations that only lack a `git add`."""
+
+
+def formatted_at(repository: Repository) -> float:
+    """When the docs were last formatted (they were)."""
+    at = remembered_at(_formatted(repository))
+    assert at is not None
+    return at
 
 
 def test_the_changed_docs_are_formatted_and_every_doc_is_checked(repository: Repository) -> None:
@@ -20,7 +29,7 @@ def test_the_changed_docs_are_formatted_and_every_doc_is_checked(repository: Rep
     write(repository, "src/a.py", "")
     assert at_stop(repository, STOP) is None
     assert make_calls(repository) == ["fix FILES=README.md docs/a.md ARGS=", "lint-docs FILES= ARGS="]
-    assert _formatted_mark(repository).exists()
+    assert remembered_at(_formatted(repository)) is not None
 
 
 def test_a_doc_is_formatted_again_only_after_it_changed(repository: Repository) -> None:
@@ -30,7 +39,7 @@ def test_a_doc_is_formatted_again_only_after_it_changed(repository: Repository) 
     at_stop(repository, STOP)
     at_stop(repository, STOP)
     assert make_calls(repository)[1:] == ["lint-docs FILES= ARGS=", "lint-docs FILES= ARGS="], "nothing to format"
-    later = _formatted_mark(repository).stat().st_mtime + 10
+    later = formatted_at(repository) + 10
     os.utime(doc, (later, later))
     at_stop(repository, STOP)
     assert make_calls(repository)[3:] == ["fix FILES=docs/a.md ARGS=", "lint-docs FILES= ARGS="]
@@ -44,11 +53,11 @@ def test_what_the_formatter_or_the_check_report_blocks(repository: Repository) -
     assert isinstance(result, Block)
     assert result.message.startswith("the docs after this turn's changes:\ndocs/a.md:3: bin/nope.py (not found)\n")
     write(repository, "fix.fails", "mdformat failed\n")
-    before = _formatted_mark(repository).stat().st_mtime
+    before = formatted_at(repository)
     os.utime(repository.root / "docs/a.md", (before + 10, before + 10))
     result = at_stop(repository, STOP)
     assert isinstance(result, Block) and "mdformat failed\n" in result.message and "bin/nope.py" in result.message
-    assert _formatted_mark(repository).stat().st_mtime == before, "not formatted: the next stop tries again"
+    assert formatted_at(repository) == before, "not formatted: the next stop tries again"
 
 
 def test_a_stop_checks_nothing_without_changes_or_a_second_time(repository: Repository) -> None:
@@ -89,12 +98,23 @@ def test_untracked_citations_are_told_once_until_they_change(repository: Reposit
     assert isinstance(at_stop(repository, STOP), Note), "untracked anew"
 
 
-def test_an_untracked_citation_beside_another_problem_blocks_with_both(repository: Repository) -> None:
-    with_makefile(repository)
-    write(repository, "docs/a.md", "# A\n")
-    write(repository, "lint-docs.fails", f"{NEW_FILE}docs/a.md:5: bin/nope.py (not found)\n")
-    result = at_stop(repository, STOP)
-    assert isinstance(result, Block)
-    assert NEW_FILE in result.message and "docs/a.md:5: bin/nope.py (not found)\n" in result.message
-    (repository.root / "lint-docs.fails").write_text(NEW_FILE)
-    assert isinstance(at_stop(repository, STOP), Note), "the other problem is fixed: the untracked one goes to the user"
+MAKES_LINE = "make: *** [Makefile:9: lint-docs] Error 1\n"
+NOT_FOUND = "docs/a.md:5: bin/nope.py (not found)\n"
+
+
+def test_a_problem_other_than_an_untracked_citation_blocks_with_all_and_keeps_what_was_told() -> None:
+    told = [NEW_NAME.strip()]
+    result, told_now = _verdict("", NEW_FILE + NOT_FOUND + MAKES_LINE, told)
+    assert isinstance(result, Block) and NEW_FILE in result.message and NOT_FOUND in result.message
+    assert told_now == told
+    result, told_now = _verdict("mdformat failed\n", NEW_FILE + MAKES_LINE, told)
+    assert isinstance(result, Block) and result.message.startswith("the docs after this turn's changes:\nmdformat")
+    assert told_now == told
+
+
+def test_untracked_citations_alone_are_a_note_unless_told_before() -> None:
+    result, told_now = _verdict("", NEW_FILE + NEW_NAME + MAKES_LINE, [NEW_FILE.strip()])
+    assert isinstance(result, Note) and result.for_user is not None
+    assert result.for_user.splitlines()[1:] == told_now == [NEW_FILE.strip(), NEW_NAME.strip()]
+    assert _verdict("", NEW_FILE + MAKES_LINE, [NEW_FILE.strip()]) == (None, [NEW_FILE.strip()]), "told before"
+    assert _verdict("", "", [NEW_FILE.strip()]) == (None, []), "none: the next ones are new"

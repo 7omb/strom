@@ -1,7 +1,26 @@
 import pytest
 from tool_helpers import commit, write
 
-from strom_tools.docs_check import _MISSING, UNTRACKED, _cited, _file_set, _top_level_names, docs, known, problems
+from strom_tools.docs_check import (
+    _MISSING,
+    UNTRACKED,
+    LongLine,
+    MissingCitation,
+    UntrackedCitation,
+    _citation,
+    _Context,
+    _DottedName,
+    _file_set,
+    _GlobCitation,
+    _lines,
+    _listed,
+    _PathCitation,
+    _top_level_names,
+    docs,
+    known,
+    problems,
+    rendered,
+)
 from strom_tools.workspace.repository import Repository
 
 
@@ -22,9 +41,9 @@ def documented(repository: Repository) -> Repository:
 
 
 def check(repository: Repository, text: str, name: str = "docs/doc.md") -> list[str]:
-    """The problems of a doc with `text`, without the `FILE:LINE: ` in front of each."""
+    """The problems of a doc with `text`, as printed without the `FILE:LINE: ` in front of each."""
     doc = write(repository, name, text)
-    return [problem.split(": ", 1)[1] for problem in problems(doc, known(repository))]
+    return [rendered(problem).split(": ", 1)[1] for problem in problems(doc, known(repository))]
 
 
 @pytest.mark.parametrize(
@@ -104,10 +123,17 @@ def test_code_blocks_and_rejected_alternatives_are_skipped_up_to_the_next_headin
 
 
 def test_a_problem_names_the_doc_and_the_line(documented: Repository) -> None:
-    doc = write(documented, "docs/doc.md", "# Title\n\nBoth `bin/a.py` and\n`bin/b.py`.\n")
-    assert problems(doc, known(documented)) == [
+    doc = write(documented, "docs/doc.md", "# Title\n\nBoth `bin/a.py` and\n`bin/new.py`.\n\n" + "x" * 121 + "\n")
+    found = problems(doc, known(documented))
+    assert found == [
+        MissingCitation("docs/doc.md", 3, "bin/a.py"),
+        UntrackedCitation("docs/doc.md", 4, "bin/new.py"),
+        LongLine("docs/doc.md", 6, 121),
+    ]
+    assert [rendered(problem) for problem in found] == [
         f"docs/doc.md:3: bin/a.py{_MISSING}",
-        f"docs/doc.md:4: bin/b.py{_MISSING}",
+        f"docs/doc.md:4: bin/new.py{UNTRACKED}",
+        "docs/doc.md:6: 121 characters (at most 120)",
     ]
 
 
@@ -118,13 +144,35 @@ def test_long_lines_are_problems_except_front_matter_urls_and_wide_tables(docume
     assert check(documented, f"| {long} |\n", "docs/research/tables.md") == []
 
 
-def test_cited_takes_the_files_it_is_given(documented: Repository) -> None:
+def test_listed_takes_the_files_it_is_given(documented: Repository) -> None:
     citable = known(documented)
     assert "bin/new.py" in citable.seen.files and "bin/new.py" not in citable.tracked.files
-    assert _cited("bin/new.py", "docs", citable.seen, citable)
-    assert not _cited("bin/new.py", "docs", citable.tracked, citable)
-    assert _cited("topic.md", "docs/plans", _file_set(["docs/plans/topic.md"]), citable)
+    assert _listed(_PathCitation("bin/new.py"), "docs", citable.seen, citable)
+    assert not _listed(_PathCitation("bin/new.py"), "docs", citable.tracked, citable)
+    assert _listed(_PathCitation("topic.md"), "docs/plans", _file_set(["docs/plans/topic.md"]), citable)
     assert _file_set(["a/b/c.py"]).with_directories == {"a/b/c.py", "a/b", "a", "."}
+
+
+def test_a_reference_cites_a_dotted_name_a_path_a_glob_or_nothing(documented: Repository) -> None:
+    root = documented.root
+    assert _citation("strom._parts.shards.Shards", root) == _DottedName("strom._parts.shards.Shards")
+    assert _citation("src/strom/a.py:12", root) == _PathCitation("src/strom/a.py")
+    assert _citation("tests/test_a.py::test_one", root) == _PathCitation("tests/test_a.py")
+    assert _citation("tests/**", root) == _GlobCitation("tests/**")
+    for nothing in ("make check", "tracked_a/b/c", "<topic>.md", "a / b", "Shards.open(cpu_workers=2)"):
+        assert _citation(nothing, root) is None, nothing
+
+
+def test_each_line_has_its_context() -> None:
+    text = "---\ntitle: x\n---\n# A\n```\n`in code`\n```\n**Rejected**\n- old\n## B\ntext\n"
+    assert [line.context for line in _lines(text)] == [
+        *[_Context.FRONT_MATTER] * 3,
+        _Context.PROSE,
+        *[_Context.CODE] * 3,
+        *[_Context.REJECTED] * 2,
+        *[_Context.PROSE] * 2,
+    ]
+    assert [line.context for line in _lines("text\n---\n")] == [_Context.PROSE] * 2, "front matter only at the top"
 
 
 def test_the_docs_are_the_markdown_files_git_sees(documented: Repository) -> None:

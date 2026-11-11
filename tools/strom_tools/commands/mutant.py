@@ -11,30 +11,27 @@ Run:  python bin/mutant.py --replace FILE OLD NEW [--tests-from REV] [--timeout 
                           of the working tree's
   PYTEST_ARGS             e.g. `-k concurrency_limit` (default: the whole suite, stopping at the first failure)
 
-The library (`src/` of the working tree), the tools (with `bin/` and the hook command), the tests and
-`pyproject.toml` are copied into a temporary directory, the bug is injected into the copy and pytest runs there,
-with the copy first on PYTHONPATH (it is checked that `import strom` finds it) and in its own process group:
-injected bugs often hang (a join waiting forever), so after `--timeout` seconds the whole group is killed, pool
-workers included. Nothing in the repository changes, also not its caches or Hypothesis database.
+The tests run on a copy of the code in a temporary directory, first without the bug, then with it; after
+`--timeout` seconds a run is killed, pool workers included (injected bugs often hang). Nothing in the repository
+changes. What is copied and how a run is isolated: `strom_tools.change_checks.mutants`.
 
-The same tests run on the copy without the bug first: they must pass there, so that a failure means the
-bug was caught (not a test that fails anyway, nor a missing pytest). Outcome and exit code: `caught` (a
-test failed: 0), `missed` (all passed: 1), `hung` (timeout: 2), or 3 if the tests do not pass without the
-bug or pytest ended otherwise (e.g. a collection error); 4 if the script itself did not run (wrong arguments, an
-OLD that does not occur once). Run the old and the new tests: a new test should catch a bug the old ones miss.
+Outcome and exit code: `caught` (a test failed: 0), `missed` (all passed: 1), `hung` (timeout: 2), or 3 if the
+tests do not pass without the bug or pytest ended otherwise (e.g. a collection error); 4 if the script itself
+did not run (wrong arguments, an OLD that does not occur once). Run the old and the new tests: a new test should
+catch a bug the old ones miss.
 """
 
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
-from strom_tools.change_checks.mutants import Bug, Patch, Replace, Verdict, try_bug, verdict
+from strom_tools.change_checks.mutants import Bug, Patch, Replace, Verdict, ended, failed_tests, try_bug, verdict
 from strom_tools.change_checks.revisions import WORKING_TREE, parse
 from strom_tools.commands import command_line
-from strom_tools.workspace.process_groups import DetachedRun
+from strom_tools.workspace.processes import ProcessRun
 from strom_tools.workspace.repository import this_repository
 
-_EXIT_CODES = {Verdict.CAUGHT: 0, Verdict.MISSED: 1, Verdict.HUNG: 2, Verdict.NONE: 3}
+_EXIT_CODES = {Verdict.CAUGHT: 0, Verdict.MISSED: 1, Verdict.HUNG: 2, Verdict.UNDECIDED: 3}
 
 
 def main(argv: Sequence[str]) -> int:
@@ -62,11 +59,10 @@ def main(argv: Sequence[str]) -> int:
         trial = try_bug(repository, bug, parse(repository, tests_from), pytest_args, timeout, Path(tmp))
     found = verdict(trial)
     if trial.mutant is None:
-        outcome = "hung" if trial.clean.returncode is None else f"exit code {trial.clean.returncode}"
         print(_output(trial.clean), end="")
-        print(f"the tests of {tests_from} do not pass without the bug ({outcome}): no verdict")
+        print(f"the tests of {tests_from} do not pass without the bug ({ended(trial.clean)}): no verdict")
         return _EXIT_CODES[found]
-    print("\n".join(line for line in trial.mutant.stdout.splitlines() if line.startswith(("FAILED", "ERROR"))))
+    print("\n".join(failed_tests(trial.mutant)))
     match found:
         case Verdict.CAUGHT:
             print(f"caught: a test failed (tests of {tests_from})")
@@ -74,10 +70,10 @@ def main(argv: Sequence[str]) -> int:
             print(f"missed: every test passed (tests of {tests_from})")
         case Verdict.HUNG:
             print(f"hung: killed after {timeout:g} s (tests of {tests_from}); narrow it with -k")
-        case Verdict.NONE:
+        case Verdict.UNDECIDED:
             print(f"{_output(trial.mutant)}pytest exit code {trial.mutant.returncode}", end="")
     return _EXIT_CODES[found]
 
 
-def _output(run: DetachedRun) -> str:
+def _output(run: ProcessRun) -> str:
     return f"--- stdout\n{run.stdout}--- stderr\n{run.stderr}"

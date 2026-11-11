@@ -1,4 +1,3 @@
-import io
 import re
 import tarfile
 from pathlib import Path
@@ -61,7 +60,7 @@ def test_no_function_changes_the_index() -> None:
     """The index is the user's (`docs/decisions.md`, Index): the tools read it, and write only into directories of
     their own (`checkout_index`, `apply_patch`)."""
     source = Path(git_files.__file__).read_text()
-    commands = set(re.findall(r'_git\(\s*[\w.]+,\s*"([\w-]+)"', source))
+    commands = set(re.findall(r'_git(?:_asked)?\(\s*[\w.]+,\s*"([\w-]+)"', source))
     assert commands == {
         "ls-files",
         "diff",
@@ -83,8 +82,9 @@ def test_a_commit_is_named_by_what_git_resolves_to_one(files: Repository) -> Non
     assert not git_files.commit_has(files, "HEAD", "staged.py")
 
 
-def test_archive_holds_the_committed_contents(files: Repository) -> None:
-    with tarfile.open(fileobj=io.BytesIO(git_files.archive(files, "HEAD", ["docs"]))) as tar:
+def test_archive_holds_the_committed_contents(files: Repository, tmp_path: Path) -> None:
+    git_files.archive(files, "HEAD", ["docs"], tmp_path / "docs.tar")
+    with tarfile.open(tmp_path / "docs.tar") as tar:
         assert sorted(member.name for member in tar.getmembers() if member.isfile()) == [
             "docs/deleted.md",
             "docs/modified.md",

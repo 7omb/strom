@@ -7,6 +7,7 @@ import pytest
 from tool_helpers import QUICK_BENCHMARK, commit, run_command, with_benchmark, with_makefile, write
 
 from strom_tools import example_scripts
+from strom_tools.change_checks import benchmark_comparison
 from strom_tools.change_checks.revisions import Commit, Revision, WorkingTree
 from strom_tools.commands import ab, check, command_line, mutant, run_examples
 from strom_tools.tool_error import ToolError
@@ -69,11 +70,14 @@ def test_run_examples_reports_the_examples_that_failed(
     """The examples are not run here (each needs an environment of its own): their outcomes are given."""
     for name in ("good", "bad", "slow"):
         write(repository, f"examples/{name}.py")
-    outcomes = {"good.py": ("ok", "", ""), "bad.py": ("exit code 1", "", "FAILED scores: expected 40, got 38\n")}
+    outcomes = {
+        "good.py": example_scripts.Passed(),
+        "bad.py": example_scripts.Failed(1, "", "FAILED scores: expected 40, got 38\n"),
+    }
     locked: list[str] = []
     monkeypatch.setattr(example_scripts, "run", lambda example: outcomes[example.name])
     monkeypatch.setattr(
-        example_scripts, "check_types", lambda repository, example: ("type errors (ty)", "--- ty\n", "")
+        example_scripts, "check_types", lambda repository, example: example_scripts.TypeErrors(("ty",), "--- ty\n")
     )
     monkeypatch.setattr(example_scripts, "lock", lambda example: locked.append(example.name))
     assert run_command(run_examples, ["good"], repository, monkeypatch) == 0
@@ -120,8 +124,8 @@ def test_ab_measures_both_sides_in_interleaved_runs_and_prints_the_table(
         measured.append((src.name, metric, tuple(pytest_args)))
         return {"io: run": 2.0 if src.name == "B" else 1.0}
 
-    monkeypatch.setattr(ab, "library_copy", library_copy)
-    monkeypatch.setattr(ab, "measure", measure)
+    monkeypatch.setattr(benchmark_comparison, "library_copy", library_copy)
+    monkeypatch.setattr(benchmark_comparison, "measure", measure)
     monkeypatch.setattr(command_line, "require_modules", lambda *names: None)
     arguments = [commit_id, ".", "-n", "2", "--metric", "min", "--", "-k", "run"]
     assert run_command(ab, arguments, repository, monkeypatch) == 0

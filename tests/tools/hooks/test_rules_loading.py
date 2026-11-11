@@ -3,8 +3,19 @@ from pathlib import Path, PurePosixPath
 import pytest
 from tool_helpers import write, write_transcript
 
-from strom_tools.hooks.hook_events import Note, Session, SessionEnded, ToolUsed
-from strom_tools.hooks.rules_loading import _body, _loaded_file, _matches, _rules, _touched, after_bash, at_end
+from strom_tools.hooks.hook_events import Session, SessionEnded, ToolUsed
+from strom_tools.hooks.hook_results import Note
+from strom_tools.hooks.memos import recalled, remembered_at
+from strom_tools.hooks.rules_loading import (
+    _loaded,
+    _matches,
+    _Rule,
+    _rules,
+    _to_add,
+    _touched,
+    after_bash,
+    at_end,
+)
 from strom_tools.workspace.repository import Repository
 
 TESTS_RULE = '---\npaths:\n  - "tests/**"\n  - "benchmarks/**"\n---\n\n# Tests\n\nNo sleeps.\n'
@@ -33,10 +44,17 @@ def bash(command: str, session: Session = SESSION) -> ToolUsed:
 def test_rules_are_the_files_with_paths_in_their_frontmatter(ruled: Repository) -> None:
     directory = ruled.root / ".claude/rules"
     assert _rules(ruled) == [
-        (directory / "tests.md", ["tests/**", "benchmarks/**"]),
-        (directory / "tooling.md", ["pyproject.toml"]),
+        _Rule(directory / "tests.md", ["tests/**", "benchmarks/**"], "# Tests\n\nNo sleeps."),
+        _Rule(directory / "tooling.md", ["pyproject.toml"], "# Tooling\n\nUse make."),
     ]
-    assert _body(directory / "tests.md") == "# Tests\n\nNo sleeps."
+
+
+def test_the_rules_to_add_match_a_touched_path_and_were_not_added_before() -> None:
+    tests, tooling = _Rule(Path("/r/tests.md"), ["tests/**"], ""), _Rule(Path("/r/tooling.md"), ["pyproject.toml"], "")
+    touched = [PurePosixPath("tests/a.py"), PurePosixPath("pyproject.toml")]
+    assert _to_add(touched, [tests, tooling], []) == [tests, tooling]
+    assert _to_add(touched, [tests, tooling], ["tests.md"]) == [tooling]
+    assert _to_add([PurePosixPath("docs/todo.md")], [tests, tooling], []) == []
 
 
 def test_touched_are_the_words_of_a_command_that_name_files_of_the_repository(ruled: Repository) -> None:
@@ -62,7 +80,7 @@ def test_a_rule_is_added_once_per_session(ruled: Repository) -> None:
         "Contents of .claude/rules/tooling.md:\n\n# Tooling\n\nUse make."
     )
     assert after_bash(ruled, bash("rg x tests pyproject.toml")) is None
-    assert _loaded_file(ruled, SESSION).read_text() == "tests.md tooling.md"
+    assert recalled(_loaded(ruled, SESSION)) == ["tests.md", "tooling.md"]
     other = after_bash(ruled, bash("ls tests", Session("another", None)))
     assert isinstance(other, Note) and other.for_claude is not None and "tooling.md" not in other.for_claude
 
@@ -70,7 +88,7 @@ def test_a_rule_is_added_once_per_session(ruled: Repository) -> None:
 def test_a_command_that_touches_no_rule_adds_nothing(ruled: Repository) -> None:
     assert after_bash(ruled, bash("git status; cat docs/todo.md")) is None
     assert after_bash(ruled, ToolUsed(SESSION, "Bash", None, None)) is None
-    assert not _loaded_file(ruled, SESSION).exists()
+    assert remembered_at(_loaded(ruled, SESSION)) is None
 
 
 def test_a_rule_claude_code_loaded_itself_is_not_added_again(ruled: Repository, tmp_path: Path) -> None:
@@ -84,6 +102,6 @@ def test_a_rule_claude_code_loaded_itself_is_not_added_again(ruled: Repository, 
 def test_the_end_of_a_session_forgets_what_was_loaded_in_it(ruled: Repository) -> None:
     after_bash(ruled, bash("ls tests"))
     assert at_end(ruled, SessionEnded(SESSION)) is None
-    assert not _loaded_file(ruled, SESSION).exists()
+    assert remembered_at(_loaded(ruled, SESSION)) is None
     assert at_end(ruled, SessionEnded(SESSION)) is None, "nothing was loaded: nothing to forget"
     assert isinstance(after_bash(ruled, bash("ls tests")), Note), "a new session of that id starts anew"

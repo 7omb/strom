@@ -39,7 +39,7 @@ from pathlib import Path
 
 from strom_tools import renames
 from strom_tools.commands import command_line
-from strom_tools.tool_error import ToolError
+from strom_tools.renames import FileMove, HitKind, IdentifierRename
 from strom_tools.workspace.repository import shown, this_repository
 
 
@@ -59,32 +59,22 @@ def main(argv: Sequence[str]) -> int:
     mentions: bool = args.mentions
     force: bool = args.force
     repository = this_repository()
-    moving = not (old_name.isidentifier() and new_name.isidentifier())
-    old, new = Path(old_name).resolve(), Path(new_name).resolve()  # of the file, if one moves
-    if moving:
-        renames.check_move(repository, old, new)
-        hits = renames.citations(repository, old, new, renames.files(repository, paths, everything=True))
-        kinds = renames.FILE_KINDS
-    else:
-        hits = [hit for path in renames.files(repository, paths) for hit in renames.scan(path, old_name, new_name)]
-        kinds = renames.IDENTIFIER_KINDS
+    rename = renames.rename_of(repository, old_name, new_name)
+    hits = renames.hits(repository, rename, paths)
     for hit in hits:
-        print(f"{hit.kind:9}  {shown(repository, hit.path)}:{hit.row}:  {renames.line_of(hit)[:110]}")
+        print(f"{hit.kind.value:9}  {shown(repository, hit.path)}:{hit.row}:  {renames.line_of(hit)[:110]}")
     counts = Counter(hit.kind for hit in hits)
-    print(", ".join(f"{counts[kind]} {kind}" for kind in kinds))
+    print(", ".join(f"{counts[kind]} {kind.value}" for kind in renames.kinds(rename)))
     if not write:
         return 0
-    if counts["collision"] and not force:
-        raise ToolError("collisions: rename those names first, or pass --force")
-    written = renames.WRITTEN | ({"mention"} if mentions else set())
-    changed = renames.apply([hit for hit in hits if hit.kind in written])
-    if moving:
-        renames.move(old, new)
-        changed = [new if path == old else path for path in changed]
-    print(renames.tidy(repository, changed), end="")
-    print(f"renamed in {len(changed)} files" + (f", moved to {shown(repository, new)}" if moving else ""))
-    if moving:
-        print(f"not staged: `git add {shown(repository, old)} {shown(repository, new)}`")
-    if counts["review"]:
+    written = renames.write(repository, rename, hits, mentions=mentions, force=force)
+    print(written.tidied, end="")
+    match rename:
+        case FileMove(old, new):
+            print(f"renamed in {len(written.changed)} files, moved to {shown(repository, new)}")
+            print(f"not staged: `git add {shown(repository, old)} {shown(repository, new)}`")
+        case IdentifierRename():
+            print(f"renamed in {len(written.changed)} files")
+    if counts[HitKind.REVIEW]:
         print("change the lines listed as review by hand")
     return 0

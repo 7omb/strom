@@ -6,69 +6,72 @@ the working tree would hold: the tracked ones and the untracked ones that are no
 Nothing here changes the index, which is the user's (`docs/decisions.md`, Index): the tools read it, and what
 they write of it goes into directories of their own."""
 
-import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
+from strom_tools.workspace.processes import run_checked, run_process
 from strom_tools.workspace.repository import Repository
 
 
-def _git(
-    directory: Path, *arguments: str, stdin: bytes | None = None, check: bool = True
-) -> subprocess.CompletedProcess[bytes]:
-    return subprocess.run(["git", *arguments], cwd=directory, input=stdin, capture_output=True, check=check)
+def _git(directory: Path, *arguments: str, stdin: str | None = None) -> str:
+    """The stdout of a git command that must succeed (a `ToolError` with git's message if it does not)."""
+    return run_checked(["git", *arguments], cwd=directory, stdin=stdin)
 
 
-def _names(listed: bytes) -> list[str]:
+def _git_asked(directory: Path, *arguments: str) -> bool:
+    """Whether a git command that answers by its exit code says yes."""
+    return run_process(["git", *arguments], cwd=directory).returncode == 0
+
+
+def _names(listed: str) -> list[str]:
     """The names of a `-z` listing."""
-    return [name for name in listed.decode().split("\0") if name]
+    return [name for name in listed.split("\0") if name]
 
 
 def staged(repository: Repository, *pathspecs: str) -> list[str]:
     """The files in the index (also those deleted from the working tree) that match one of `pathspecs` (none:
     all)."""
-    return _names(_git(repository.root, "ls-files", "-z", "--cached", "--", *pathspecs).stdout)
+    return _names(_git(repository.root, "ls-files", "-z", "--cached", "--", *pathspecs))
 
 
 def seen(repository: Repository, *pathspecs: str, untracked: bool = True) -> list[str]:
     """The files of the working tree that git sees and that match one of `pathspecs` (none: all): the tracked
     ones that are not deleted, with `untracked` also those that are neither tracked nor ignored."""
     others = ["--others", "--exclude-standard"] if untracked else []
-    listed = _names(_git(repository.root, "ls-files", "-z", "--cached", *others, "--", *pathspecs).stdout)
+    listed = _names(_git(repository.root, "ls-files", "-z", "--cached", *others, "--", *pathspecs))
     return [name for name in listed if (repository.root / name).exists()]
 
 
 def changed(repository: Repository) -> list[str]:
     """The files with uncommitted changes (staged or not) and the untracked ones that are not ignored."""
-    unstaged = _git(repository.root, "ls-files", "-z", "--modified", "--others", "--exclude-standard").stdout
-    in_index = _git(repository.root, "diff", "-z", "--name-only", "--cached").stdout
+    unstaged = _git(repository.root, "ls-files", "-z", "--modified", "--others", "--exclude-standard")
+    in_index = _git(repository.root, "diff", "-z", "--name-only", "--cached")
     names = {*_names(unstaged), *_names(in_index)}
     return sorted(name for name in names if (repository.root / name).exists())
 
 
 def is_ignored(repository: Repository, name: str) -> bool:
     """Whether the ignore rules match `name`, tracked or not, existing or not."""
-    return _git(repository.root, "check-ignore", "--quiet", "--no-index", name, check=False).returncode == 0
+    return _git_asked(repository.root, "check-ignore", "--quiet", "--no-index", name)
 
 
 def is_commit(repository: Repository, name: str) -> bool:
     """Whether `name` names a commit (a tag or a branch too; a bare tree does not)."""
-    verified = _git(repository.root, "rev-parse", "--verify", "--quiet", f"{name}^{{commit}}", check=False)
-    return verified.returncode == 0
+    return _git_asked(repository.root, "rev-parse", "--verify", "--quiet", f"{name}^{{commit}}")
 
 
 def commit_has(repository: Repository, commit: str, path: str) -> bool:
-    return _git(repository.root, "cat-file", "-e", f"{commit}:{path}", check=False).returncode == 0
+    return _git_asked(repository.root, "cat-file", "-e", f"{commit}:{path}")
 
 
-def archive(repository: Repository, commit: str, paths: Sequence[str]) -> bytes:
-    """The files under `paths` of a commit, as a tar archive."""
-    return _git(repository.root, "archive", "--format=tar", commit, "--", *paths).stdout
+def archive(repository: Repository, commit: str, paths: Sequence[str], tar: Path) -> None:
+    """Writes the files under `paths` of a commit into the tar archive `tar`."""
+    _git(repository.root, "archive", "--format=tar", f"--output={tar}", commit, "--", *paths)
 
 
 def checkout_index(repository: Repository, names: Sequence[str], dest: Path) -> None:
     """Writes the staged contents of the files `names` into `dest`."""
-    listed = "".join(f"{name}\0" for name in names).encode()
+    listed = "".join(f"{name}\0" for name in names)
     _git(repository.root, "checkout-index", "-z", "--stdin", f"--prefix={dest}/", stdin=listed)
 
 

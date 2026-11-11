@@ -24,13 +24,10 @@ pinned to the cores of one (`--cpus`); repeat a surprising result.
 
 import os
 import sys
-import tempfile
-import time
 from collections.abc import Sequence
-from pathlib import Path
 
-from strom_tools.change_checks.benchmark_comparison import Side, compared, cpu_set, interleaved, measure, table
-from strom_tools.change_checks.revisions import WORKING_TREE, Revision, library_copy, parse
+from strom_tools.change_checks.benchmark_comparison import Compared, RunDone, Side, comparison, cpu_set, table
+from strom_tools.change_checks.revisions import WORKING_TREE, Revision, parse
 from strom_tools.commands import command_line
 from strom_tools.workspace.repository import this_repository
 
@@ -59,23 +56,18 @@ def main(argv: Sequence[str]) -> int:
     command_line.require_modules("pytest", "pytest_benchmark")
     repository = this_repository()
     revisions: dict[Side, Revision] = {"A": parse(repository, name_a), "B": parse(repository, name_b)}
-    results: dict[Side, dict[str, list[float]]] = {"A": {}, "B": {}}
-    with tempfile.TemporaryDirectory(prefix="strom-ab-") as tmp:
-        srcs = {side: library_copy(repository, revision, Path(tmp) / side) for side, revision in revisions.items()}
-        started_at, num_done = time.monotonic(), 0
-        for run, side in interleaved(runs):
-            values = measure(repository, srcs[side], Path(tmp) / f"{side}{run}.json", metric, pytest_args)
-            for name, value in values.items():
-                results[side].setdefault(name, []).append(value)
-            num_done += 1
-            left_time = (time.monotonic() - started_at) / num_done * (2 * runs - num_done)
-            print(
-                f"run {run + 1}/{runs} {side} done: {len(values)} benchmarks, "
-                f"about {left_time / 60:.1f} min for the remaining runs",
-                file=sys.stderr,
-                flush=True,
-            )
     pinned = f", on the CPUs {cpus}" if cpus is not None else ""
-    print(f"A = {name_a}, B = {name_b} (`.`: the working tree); {metric}, median (IQR) of {runs} runs each{pinned}")
-    print(table(compared(results["A"], results["B"])))
+    header = f"A = {name_a}, B = {name_b} (`.`: the working tree); {metric}, median (IQR) of {runs} runs each{pinned}"
+    for step in comparison(repository, revisions, runs, metric, pytest_args):
+        match step:
+            case RunDone(run, side, num_benchmarks, left_time):
+                print(
+                    f"run {run + 1}/{runs} {side} done: {num_benchmarks} benchmarks, "
+                    f"about {left_time / 60:.1f} min for the remaining runs",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            case Compared(rows):
+                print(header)
+                print(table(rows))
     return 0

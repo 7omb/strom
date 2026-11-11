@@ -6,15 +6,16 @@ PYTHONPATH. Usage and how to read the table: `strom_tools.commands.ab`."""
 import json
 import math
 import statistics
-import sys
+import tempfile
+import time
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, TypedDict
 
-from strom_tools.change_checks.revisions import python_path_env
+from strom_tools.change_checks.revisions import Revision, library_copy, python_path_env
 from strom_tools.tool_error import ToolError
-from strom_tools.workspace.process_groups import run_detached
+from strom_tools.workspace.processes import output, pytest_command, run_process
 from strom_tools.workspace.repository import Repository
 
 _TIMEOUT = 3600.0  # seconds per run
@@ -37,24 +38,14 @@ class _Report(TypedDict):
 
 def measure(repository: Repository, src: Path, out: Path, metric: str, pytest_args: Sequence[str]) -> dict[str, float]:
     """One run of the benchmarks with the library in `src`: `metric` per benchmark (`group: name`)."""
-    run = run_detached(
-        [
-            sys.executable,
-            "-m",
-            "pytest",
-            "benchmarks/benchmark.py",
-            "-q",
-            "-p",
-            "no:cacheprovider",
-            f"--benchmark-json={out}",
-            *pytest_args,
-        ],
+    run = run_process(
+        pytest_command("benchmarks/benchmark.py", "-q", f"--benchmark-json={out}", *pytest_args),
         cwd=repository.root,
         timeout=_TIMEOUT,
         env=python_path_env(src),
     )
     if run.returncode != 0:
-        raise ToolError(f"benchmark run failed (returncode={run.returncode}):\n{run.stdout}{run.stderr}")
+        raise ToolError(f"benchmark run failed (returncode={run.returncode}):\n{output(run)}")
     report: _Report = json.loads(out.read_text())
     return _metric_values(report["benchmarks"], metric)
 
@@ -72,7 +63,7 @@ def _metric_values(benchmarks: Sequence[_Benchmark], metric: str) -> dict[str, f
     return values
 
 
-def interleaved(runs: int) -> Iterator[tuple[int, Side]]:
+def _interleaved(runs: int) -> Iterator[tuple[int, Side]]:
     """The run number (from 0) and the side of each process, in the order A B B A A B ...: a drift of the machine
     (heat, other load) hits both sides alike."""
     for run in range(runs):
@@ -120,7 +111,7 @@ class Row:
     p: float
 
 
-def compared(a: Mapping[str, Sequence[float]], b: Mapping[str, Sequence[float]]) -> list[Row]:
+def _compared(a: Mapping[str, Sequence[float]], b: Mapping[str, Sequence[float]]) -> list[Row]:
     """A row per benchmark of side A, from the values of its runs on both sides (the same benchmark file: the
     same benchmarks)."""
     return [
@@ -134,6 +125,48 @@ def compared(a: Mapping[str, Sequence[float]], b: Mapping[str, Sequence[float]])
         )
         for name, values in a.items()
     ]
+
+
+@dataclass(frozen=True)
+class RunDone:
+    """A run of the benchmarks ended."""
+
+    run: int
+    """From 0; a run is one process per side."""
+    side: Side
+    num_benchmarks: int
+    """Measured in it."""
+    left_time: float
+    """Seconds the remaining runs take at the pace so far."""
+
+
+@dataclass(frozen=True)
+class Compared:
+    """Every run ended: the comparison."""
+
+    rows: list[Row]
+
+
+def comparison(
+    repository: Repository,
+    revisions: Mapping[Side, Revision],
+    num_runs: int,
+    metric: str,
+    pytest_args: Sequence[str],
+) -> Iterator[RunDone | Compared]:
+    """Measures `metric` with the library of each side's revision in `num_runs` interleaved runs per side (each
+    with its own copy of the library, in a temporary directory); yields each run as it ends, then the rows."""
+    values: dict[Side, dict[str, list[float]]] = {"A": {}, "B": {}}
+    with tempfile.TemporaryDirectory(prefix="strom-ab-") as tmp:
+        srcs = {side: library_copy(repository, revision, Path(tmp) / side) for side, revision in revisions.items()}
+        started_at = time.monotonic()
+        for num_done, (run, side) in enumerate(_interleaved(num_runs), start=1):
+            measured = measure(repository, srcs[side], Path(tmp) / f"{side}{run}.json", metric, pytest_args)
+            for name, value in measured.items():
+                values[side].setdefault(name, []).append(value)
+            left_time = (time.monotonic() - started_at) / num_done * (2 * num_runs - num_done)
+            yield RunDone(run, side, len(measured), left_time)
+    yield Compared(_compared(values["A"], values["B"]))
 
 
 def table(rows: Sequence[Row]) -> str:

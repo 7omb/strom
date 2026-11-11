@@ -3,18 +3,18 @@
 A revision is a commit, the working tree (`.`, uncommitted changes included) or the index (`:index`, the staged
 changes: a state to compare later edits with, without a commit)."""
 
-import io
 import os
 import shutil
-import subprocess
 import sys
 import tarfile
+import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
 from strom_tools.tool_error import ToolError
 from strom_tools.workspace import git_files
+from strom_tools.workspace.processes import run_checked
 from strom_tools.workspace.repository import SOURCE_ROOTS, Repository
 
 WORKING_TREE = "."
@@ -55,7 +55,7 @@ def parse(repository: Repository, text: str) -> Revision:
     return Commit(text)
 
 
-def _named(revision: Revision) -> str:
+def as_argument(revision: Revision) -> str:
     """The revision as a command's argument names it."""
     match revision:
         case WorkingTree():
@@ -79,8 +79,11 @@ def export(repository: Repository, revision: Revision, paths: Sequence[str], des
         case Index():
             git_files.checkout_index(repository, git_files.staged(repository, *paths), dest)
         case Commit(name):
-            with tarfile.open(fileobj=io.BytesIO(git_files.archive(repository, name, paths))) as tar:
-                tar.extractall(dest, filter="data")
+            with tempfile.TemporaryDirectory() as tmp:
+                archived = Path(tmp) / "archive.tar"
+                git_files.archive(repository, name, paths, archived)
+                with tarfile.open(archived) as tar:
+                    tar.extractall(dest, filter="data")
 
 
 def checkout(repository: Repository, revision: Revision, dest: Path) -> Path:
@@ -109,15 +112,13 @@ def library_copy(repository: Repository, revision: Revision, dest: Path) -> Path
     root = SOURCE_ROOTS["strom"]
     export(repository, revision, [root], dest)
     src = dest / root
-    found = subprocess.run(
+    found = run_checked(
         [sys.executable, "-c", "import importlib.util; print(importlib.util.find_spec('strom').origin)"],
+        cwd=dest,
         env=python_path_env(src),
-        capture_output=True,
-        text=True,
-        check=True,
-    ).stdout.strip()
+    ).strip()
     if not Path(found).is_relative_to(src):
-        raise ToolError(f"`import strom` finds {found}, not the copy of {_named(revision)} in {src}")
+        raise ToolError(f"`import strom` finds {found}, not the copy of {as_argument(revision)} in {src}")
     return src
 
 

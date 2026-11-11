@@ -12,9 +12,9 @@ other (`tests/tools/test_structure.py` checks both).
   foundations   `tool_error` (`ToolError`: what a tool could not do, as the message its command prints),
                 `json_objects` (JSON read as `object`, narrowed without `Any`)
   `workspace`   the repository and what runs in it: `repository` (its root, the state directory, the source
-                roots), `git_files` (every call of git), `make_targets` (the Makefile's targets: the one
-                definition of the checks and the fixers), `process_groups` (a command with a timeout that
-                kills its whole group)
+                roots), `git_files` (every call of git), `make_runs` (runs of the Makefile's targets, the
+                one definition of the checks and the fixers), `processes` (every command the tools start, in a
+                group that a timeout kills as a whole)
   the tools     `change_checks` (what validates a change, skill `validate-change`: revisions, line diffs,
                 benchmark comparisons, typing diagnostics, collected test IDs, mutants, the make checks),
                 `example_scripts`, `docs_check`, `renames`, `sessions` (Claude Code's transcripts and the
