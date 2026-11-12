@@ -6,7 +6,8 @@ the rules loaded in few sessions. After a Bash command, `after_bash` takes each 
 directory of the repository (a directory stands for the files in it), and adds each rule whose `paths` match
 one to Claude's context: once per session, and not when the transcript shows Claude Code loaded it already, and
 only as many as fit into one hook output (`CONTEXT_LIMIT`); it names the others, and a later command adds them.
-What it added in a session it keeps in a memo, until the session ends (`at_end`)."""
+What it added in a session it keeps in a memo, until a summary of the context drops it (`at_start`) or the
+session ends (`at_end`)."""
 
 import re
 import shlex
@@ -14,7 +15,7 @@ from collections.abc import Sequence
 from pathlib import PurePosixPath
 
 from strom_tools.docs_check import RuleNote, rule_notes
-from strom_tools.hooks.hook_events import Session, SessionEnded, ToolUsed
+from strom_tools.hooks.hook_events import Session, SessionEnded, SessionStarted, ToolUsed
 from strom_tools.hooks.hook_results import CONTEXT_LIMIT, HookResult, Note
 from strom_tools.hooks.memos import Memo, forget, memo, recalled, remember
 from strom_tools.sessions.transcripts import loaded_natively
@@ -70,6 +71,14 @@ def _packed(repository: Repository, rules: Sequence[RuleNote]) -> tuple[list[Rul
             sections.append(section)
     others = [rule for rule in rules if rule not in added]
     return added, Note(for_claude="\n\n".join([*sections, left_out(others)] if others else sections))
+
+
+def at_start(repository: Repository, event: SessionStarted) -> HookResult:
+    """After a summary of the context, which drops what was added before it (as Claude Code's own loads, see
+    `loaded_natively`): forgets what was added."""
+    if event.source == "compact":
+        forget(_loaded(repository, event.session))
+    return None
 
 
 def at_end(repository: Repository, event: SessionEnded) -> HookResult:

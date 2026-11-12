@@ -306,7 +306,7 @@ async def test_what_cannot_be_pickled_fails_its_own_call_only(one_worker: Proces
         await one_worker.run(lambda item: item, 0)
     with pytest.raises((pickle.PicklingError, AttributeError)):  # the result: the worker's error
         await one_worker.run(unpicklable, 0)
-    with pytest.raises(RuntimeError, match="^Fussy: 7 and 7") as info:  # an error this process could not rebuild
+    with pytest.raises(RuntimeError, match=r"^Fussy: 7 and 7") as info:  # an error this process could not rebuild
         await one_worker.run(fail_fussily, 7)
     assert "raise Fussy(item, item)" in str(info.value.__cause__)
     assert await one_worker.run(pid, 0) == worker  # the worker lives on, in step with its pipe

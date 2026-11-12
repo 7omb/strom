@@ -1,6 +1,14 @@
 from pathlib import Path
 
-from strom_tools.hooks.hook_events import Session, SessionEnded, SessionStarted, ToolUsed, TurnEnded, parse
+from strom_tools.hooks.hook_events import (
+    Session,
+    SessionEnded,
+    SessionStarted,
+    ToolRequested,
+    ToolUsed,
+    TurnEnded,
+    parse,
+)
 
 SESSION = Session("abcd", Path("/transcripts/abcd.jsonl"))
 BASE = {"session_id": "abcd", "transcript_path": "/transcripts/abcd.jsonl"}
@@ -11,6 +19,7 @@ def test_parse_makes_the_event_with_the_fields_the_handlers_use() -> None:
     assert parse(edit) == ToolUsed(SESSION, "Edit", "/a.py", None)
     bash = {**BASE, "hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "ls"}}
     assert parse(bash) == ToolUsed(SESSION, "Bash", None, "ls")
+    assert parse({**bash, "hook_event_name": "PreToolUse"}) == ToolRequested(SESSION, "Bash", "ls")
     assert parse({**BASE, "hook_event_name": "Stop", "stop_hook_active": True}) == TurnEnded(SESSION, again=True)
     assert parse({**BASE, "hook_event_name": "Stop"}) == TurnEnded(SESSION, again=False)
     assert parse({**BASE, "hook_event_name": "SessionStart", "source": "clear"}) == SessionStarted(SESSION, "clear")

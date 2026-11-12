@@ -10,6 +10,7 @@ import contextlib
 import itertools
 import os
 import pickle
+import re
 import threading
 import time
 import uuid
@@ -42,6 +43,16 @@ meaning = testing.evaluate  # the reference semantics; `meaning_async` inside a 
 meaning_async = testing.evaluate_async
 
 ROOT = Path(__file__).resolve().parent.parent
+
+
+def readme_example(directory: Path) -> Path:
+    """The one Python block of `README.md`, as a script in `directory` (run and type-checked by the tests)."""
+    (block,) = re.findall(
+        r"^```python\n(.*?)^```$", (ROOT / "README.md").read_text(encoding="utf-8"), re.MULTILINE | re.DOTALL
+    )
+    script = directory / "readme_example.py"
+    script.write_text(block, encoding="utf-8")
+    return script
 
 
 def inc(item: int) -> list[int]:

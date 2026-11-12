@@ -6,7 +6,7 @@ import pytest
 from tool_helpers import make_calls, with_makefile, write
 
 from strom_tools.hooks import dispatcher
-from strom_tools.hooks.hook_events import Session, SessionEnded, SessionStarted, ToolUsed, TurnEnded
+from strom_tools.hooks.hook_events import Session, SessionEnded, SessionStarted, ToolRequested, ToolUsed, TurnEnded
 from strom_tools.hooks.hook_results import Block, Failed, HookResult, Note
 from strom_tools.workspace.repository import Repository
 
@@ -14,18 +14,25 @@ SESSION = Session("abcd", None)
 
 
 def test_every_event_has_its_handlers() -> None:
+    assert set(dispatcher._BEFORE_TOOL) == {"Bash"}
     assert set(dispatcher._AFTER_TOOL) == {"Edit", "MultiEdit", "Write", "Bash"}
     named = [handler.__module__.rsplit(".", 1)[1] for handler in dispatcher._AT_STOP]
     assert named == ["python_fixes", "docs_fixes", "friction_notes"]
-    assert len(dispatcher._AT_START) == 1 and len(dispatcher._AT_END) == 2
+    started = [handler.__module__.rsplit(".", 1)[1] for handler in dispatcher._AT_START]
+    assert started == ["friction_notes", "rules_loading", "context_notes"]
+    assert len(dispatcher._AT_END) == 2
 
 
 def test_the_results_are_those_of_the_handlers_of_the_event(repository: Repository) -> None:
     with_makefile(repository)
     assert dispatcher._results(repository, ToolUsed(SESSION, "Read", "/a.py", None)) == []
     assert dispatcher._results(repository, ToolUsed(SESSION, "Bash", None, "ls")) == [None]
+    assert dispatcher._results(repository, ToolRequested(SESSION, "Bash", "ls")) == [None]
+    (refused,) = dispatcher._results(repository, ToolRequested(SESSION, "Bash", "git add -A"))
+    assert isinstance(refused, Block)
+    assert dispatcher._results(repository, ToolRequested(SESSION, "Edit", None)) == []
     assert dispatcher._results(repository, TurnEnded(SESSION, again=True)) == [None, None, None]
-    assert dispatcher._results(repository, SessionStarted(SESSION, "resume")) == [None]
+    assert dispatcher._results(repository, SessionStarted(SESSION, "resume")) == [None, None, None]
     assert dispatcher._results(repository, SessionEnded(SESSION)) == [None, None]
     edited = write(repository, "a.py")
     write(repository, "lint-python.fails", "an error\n")

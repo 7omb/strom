@@ -92,10 +92,12 @@ async def test_two_blocks_of_one_opener_are_two_handles(pools: P.Pools, journal:
 
 async def test_a_use_in_flight_delays_the_close_until_it_ends(pools: P.Pools, journal: Journal) -> None:
     """A suspended `io_stage` generator holds a use: the close waits until the run closes it."""
-    async with P.worker_handle(journal, pools) as handle:
-        async with P.stream(P.io_stage(P.using(handle, tokens_lazily)), [1_000], pools) as outputs:
-            async for _ in outputs:
-                break  # the generator stays suspended in its pool thread until the run closes it
+    async with (
+        P.worker_handle(journal, pools) as handle,
+        P.stream(P.io_stage(P.using(handle, tokens_lazily)), [1_000], pools) as outputs,
+    ):
+        async for _ in outputs:
+            break  # the generator stays suspended in its pool thread until the run closes it
     assert journal.closes() == journal.opens()
 
 

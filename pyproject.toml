@@ -37,6 +37,9 @@ dev = [
     "pytest>=9.2.0",
     "pytest-asyncio",
     "pytest-cov",
+    "pytest-randomly>=5.1",  # tests in a random order (the seed is printed: `-p randomly --randomly-seed=N`)
+    "pytest-repeat>=0.9.4",  # a suspected flake: `--count=50 -k TEST`, with `-n auto`
+    "pytest-timeout>=2.4",  # a hung test fails with every thread's stack (`timeout` below)
     "pytest-xdist",
     "tox",
 ]
@@ -53,7 +56,13 @@ addopts = ["-ra", "--strict-markers", "--strict-config"]
 xfail_strict = true
 asyncio_mode = "auto"  # pytest-asyncio: every `async def` test and fixture runs on an event loop
 asyncio_default_fixture_loop_scope = "function"
-filterwarnings = ["ignore:cpu_backend='thread' with the GIL enabled"]
+# Seconds per test (pytest-timeout): the slowest took 3.4 s (2026-11-11), the rare fan-out of generated law examples
+# up to 232 s (docs/todo.md, Tests and benchmarks); a hang fails with every thread's stack.
+timeout = 300
+filterwarnings = [
+    "error",  # e.g. a coroutine never awaited, a ResourceWarning
+    "ignore:cpu_backend='thread' with the GIL enabled",
+]
 
 [tool.coverage.run]
 branch = true
@@ -61,15 +70,36 @@ source = ["strom", "strom_tools"]
 
 [tool.coverage.report]
 show_missing = true
+# Branch coverage was 97.0% on 2026-11-11, and 96.99% in the next run (timing-dependent branches): raise the floor
+# with the coverage, never lower it to pass.
+fail_under = 96.5
 
 [tool.mypy]
 strict = true
-enable_error_code = ["explicit-override"]
+strict_bytes = true
+enable_error_code = [
+    "deprecated",
+    "exhaustive-match",
+    "explicit-override",
+    "ignore-without-code",
+    "mutable-override",
+    "narrowed-type-not-subtype",
+    "possibly-undefined",
+    "redundant-expr",
+    "redundant-self",
+    "truthy-bool",
+    "truthy-iterable",
+    "unimported-reveal",
+    "unused-awaitable",
+]
 files = ["src", "tests", "benchmarks", "bin", "tools"]  # examples: each in its own environment (`make type`)
 
 [[tool.mypy.overrides]]
 module = ["strom", "strom.*", "strom_tools", "strom_tools.*"]
 disallow_any_expr = true
+# Not in the tests: there it flags the `raise …` before the `yield` that makes an async generator, and attributes
+# that an awaited call changes after an `assert` narrowed them.
+warn_unreachable = true
 
 [tool.pyright]
 pythonVersion = "3.14"
@@ -79,6 +109,12 @@ venvPath = "."
 venv = ".venv"
 enableTypeIgnoreComments = false  # `# type: ignore` is mypy's; pyright's own is `# pyright: ignore[rule]`
 reportUnnecessaryTypeIgnoreComment = "error"  # an ignore expires with the bug it was for (mypy: strict)
+# Off even in strict mode; for every file
+reportImplicitOverride = "error"  # as mypy's `explicit-override`
+reportUninitializedInstanceVariable = "error"
+reportPropertyTypeMismatch = "error"
+reportCallInDefaultInitializer = "error"
+deprecateTypingAliases = true
 
 # The library in strict mode, spelled out: `strict = ["src"]` can't be overridden per rule. Left out (see
 # docs/decisions/pyright-strict.md): reportUnknownArgumentType, reportUnknownMemberType,
@@ -161,6 +197,45 @@ reportUnsupportedDunderAll = "error"
 reportUnusedExpression = "error"
 reportMatchNotExhaustive = "error"
 
+# The rest (tests, benchmarks, the wrappers in bin): the library's list without reportPrivateUsage (tests may test
+# internals, ARCHITECTURE.md) and reportUnknownLambdaType (the lambdas passed to stages, .claude/rules/typing-api.md).
+# The first environment whose root holds a file applies.
+[[tool.pyright.executionEnvironments]]
+root = "."
+reportUnusedClass = "error"
+reportUnusedFunction = "error"
+strictListInference = true
+strictSetInference = true
+strictDictionaryInference = true
+reportMissingTypeStubs = "error"
+reportUnusedImport = "error"
+reportUnusedVariable = "error"
+reportDuplicateImport = "error"
+reportWildcardImportFromLibrary = "error"
+reportUntypedFunctionDecorator = "error"
+reportUntypedClassDecorator = "error"
+reportUntypedBaseClass = "error"
+reportUntypedNamedTuple = "error"
+reportTypeCommentUsage = "error"
+reportConstantRedefinition = "error"
+reportDeprecated = "error"
+reportInconsistentConstructor = "error"
+reportInvalidStringEscapeSequence = "error"
+reportUnknownParameterType = "error"
+reportMissingParameterType = "error"
+reportMissingTypeArgument = "error"
+reportInvalidTypeVarUse = "error"
+reportUnnecessaryIsInstance = "error"
+reportUnnecessaryCast = "error"
+reportUnnecessaryContains = "error"
+reportAssertAlwaysTrue = "error"
+reportSelfClsParameterName = "error"
+reportInvalidStubStatement = "error"
+reportIncompleteStub = "error"
+reportUnsupportedDunderAll = "error"
+reportUnusedExpression = "error"
+reportMatchNotExhaustive = "error"
+
 [tool.ty.environment]
 python-version = "3.14"
 python = ".venv"  # as pyright's `venv`: not the active one (a tox env runs `make type` with its own active)
@@ -178,17 +253,29 @@ line-length = 120
 src = [".", "src", "tools"]  # the roots of first-party imports: the default and the tools
 
 [tool.ruff.lint]
-select = ["ANN", "B", "E", "F", "I", "PLE", "S", "UP", "W"]
+select = [
+    "A", "ANN", "ASYNC", "B", "C4", "DTZ", "E", "ERA", "F", "FA", "FLY", "FURB", "G", "I", "ISC", "LOG", "PERF", "PGH",
+    "PIE", "PLE", "PTH", "Q", "RET", "RSE", "RUF", "S", "SIM", "SLOT", "T10", "TID", "UP", "W", "YTT",
+]
 ignore = [
     "UP046",  # explicit TypeVars on purpose: pyright infers PEP 695 type parameters of the sum tags invariant
+    "RUF022",  # `__all__` in the order of the user guide, not sorted
+    "RUF023",  # `__slots__` in the order of the fields
 ]
+
+[tool.ruff.lint.flake8-builtins]
+builtins-ignorelist = ["open"]  # the opener of a worker handle (`worker_handle(open)`), as `contextlib` names it
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**" = [
     "S101",  # assert is how pytest checks
     "S603",  # subprocesses run sys.executable with fixed arguments
+    "ASYNC110",  # polls of a state that has no event to wait for (another thread's or process's), within a timeout
 ]
-"benchmarks/**" = ["S101"]  # assert is how pytest checks
+"benchmarks/**" = [
+    "S101",  # assert is how pytest checks
+    "PERF401",  # loops shaped like the consumers and the steps they measure
+]
 "tests/tool_helpers.py" = ["S607"]  # git from PATH, in repositories the tests make
 "tools/**" = [
     "S603",  # runs sys.executable, git, make and the checkers with arguments of its own

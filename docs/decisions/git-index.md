@@ -4,11 +4,12 @@ The index is the user's (2026-11-11): Claude neither stages nor unstages. The us
 Claude's changes with it (`git diff`, and the revision `:index` of the scripts in `bin/`); what needs staging is a
 command at the end of a report (`CLAUDE.md`, Process). Consequences: a new file that a doc cites keeps `make lint`
 failing until the user stages it; a file is deleted without `git rm`; a baseline that Claude needs is a commit made
-beside the index (`.claude/rules/baselines.md`). The tools keep to it: `strom_tools.workspace.git_files` runs no git
-command that changes the index (tested); `bin/rename.py` moves a file in the working tree only and prints the `git add`
-for the two paths; the Stop hook does not block Claude for a citation that is only untracked, which Claude could not
-fix, but tells the user, once per set of such citations (`strom_tools.hooks.docs_fixes`). A `deny` rule for the staging
-commands in `.claude/settings.json` enforces it for Claude's own commands; the user writes that file
+beside the index (`bin/baseline.py`: in an index file of its own, 2026-11-11). The tools keep to it:
+`strom_tools.workspace.git_files` runs no git command that changes the index (tested); `bin/rename.py` moves a file in
+the working tree only and prints the `git add` for the two paths; the Stop hook does not block Claude for a citation
+that is only untracked, which Claude could not fix, but tells the user, once per set of such citations
+(`strom_tools.hooks.docs_fixes`). A `deny` rule for the staging commands in `.claude/settings.json` enforces it for
+Claude's own commands; the user writes that file
 
 **Rejected**
 

@@ -33,6 +33,10 @@ _GLOB_LINE = re.compile(r'\s*-\s+"?([^"\n]+?)"?\s*')
 NOTE_LIMIT = 2_500
 """The characters of a rules file's text (without the front matter): so that several fit into one hook output
 (`strom_tools.hooks.hook_results.CONTEXT_LIMIT`), and a note that outgrows it holds a second topic."""
+_SESSION_DOC = "CLAUDE.md"
+SESSION_DOC_LIMIT = 8_000
+"""The bytes of `CLAUDE.md`, which every session loads whole: what only some work needs goes elsewhere
+(`.claude/rules/docs.md`)."""
 
 
 @dataclass(frozen=True)
@@ -150,7 +154,20 @@ class LongNote:
     length: int
 
 
-type Problem = LongLine | MissingCitation | UntrackedCitation | UnscopedNote | DeadGlob | LongNote
+@dataclass(frozen=True)
+class LongSessionDoc:
+    """`CLAUDE.md` over `SESSION_DOC_LIMIT`."""
+
+    doc: str
+    size: int
+    """In bytes."""
+
+    @property
+    def line(self) -> int:
+        return 1
+
+
+type Problem = LongLine | MissingCitation | UntrackedCitation | UnscopedNote | DeadGlob | LongNote | LongSessionDoc
 
 
 def rendered(problem: Problem) -> str:
@@ -170,6 +187,11 @@ def rendered(problem: Problem) -> str:
             return (
                 f"{doc}:{line}: {length} characters of text (at most {NOTE_LIMIT}): a second topic, a note of its own"
             )
+        case LongSessionDoc(doc, size):
+            return (
+                f"{doc}:1: {size} bytes (at most {SESSION_DOC_LIMIT}): every session loads it; move what only some"
+                " work needs to its place (.claude/rules/docs.md)"
+            )
 
 
 def problems(doc: Path, known: Known) -> list[Problem]:
@@ -177,26 +199,37 @@ def problems(doc: Path, known: Known) -> list[Problem]:
     of its `paths`, in the order of its lines."""
     root = known.repository.root
     name = shown(known.repository, doc)
-    lines = list(_lines(doc.read_text(encoding="utf-8")))
+    text = doc.read_text(encoding="utf-8")
+    lines = list(_lines(text))
     long_lines = _long_lines(name, lines, wide_tables=doc.is_relative_to(root / _WIDE_TABLES))
     directory = doc.parent.relative_to(root).as_posix() if doc.is_relative_to(root) else None
     cited = _uncited(name, lines, directory, known)
     notes = _note_problems(name, lines, known) if directory == _RULES and doc.suffix == ".md" else []
-    return sorted([*notes, *long_lines, *cited], key=_line_of)  # stable: a long line before what it cites
+    size = len(text.encode())
+    session = [LongSessionDoc(name, size)] if doc == root / _SESSION_DOC and size > SESSION_DOC_LIMIT else []
+    return sorted([*session, *notes, *long_lines, *cited], key=_line_of)  # stable: a long line before what it cites
 
 
 def _line_of(problem: Problem) -> int:
     return problem.line
 
 
-def _note_problems(doc: str, lines: Sequence[_Line], known: Known) -> list[UnscopedNote | DeadGlob | LongNote]:
-    """The problems of a rules file: its `paths` (none, or globs that match no tracked file) and its size."""
+def _note_problems(
+    doc: str, lines: Sequence[_Line], known: Known
+) -> list[UnscopedNote | DeadGlob | UntrackedCitation | LongNote]:
+    """The problems of a rules file: its `paths` (none, or globs that match no tracked file: untracked if they
+    match a file a `git add` would track) and its size."""
     globs = _globs(lines)
     if not globs:
         return [UnscopedNote(doc, 1)]
-    files = [PurePosixPath(name) for name in known.tracked.files]
-    dead: list[UnscopedNote | DeadGlob | LongNote] = [
-        DeadGlob(doc, number, glob) for number, glob in globs if not any(file.full_match(glob) for file in files)
+    tracked = [PurePosixPath(name) for name in known.tracked.files]
+    seen = [PurePosixPath(name) for name in known.seen.files]
+    dead: list[UnscopedNote | DeadGlob | UntrackedCitation | LongNote] = [
+        UntrackedCitation(doc, number, glob)
+        if any(file.full_match(glob) for file in seen)
+        else DeadGlob(doc, number, glob)
+        for number, glob in globs
+        if not any(file.full_match(glob) for file in tracked)
     ]
     body = _body(lines)
     if len(body) <= NOTE_LIMIT:

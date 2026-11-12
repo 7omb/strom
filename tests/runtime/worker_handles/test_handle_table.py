@@ -60,7 +60,10 @@ def test_a_use_after_the_close_is_refused(tmp_path: Path) -> None:
     with table.use("key", "journal", journal):
         pass
     table.close("key")
-    with pytest.raises(RuntimeError, match="^worker handle 'journal' is closed$"), table.use("key", "journal", journal):
+    with (
+        pytest.raises(RuntimeError, match=r"^worker handle 'journal' is closed$"),
+        table.use("key", "journal", journal),
+    ):
         pass
     table.close("never used")  # marks it closed too
     with pytest.raises(RuntimeError, match="closed"), table.use("never used", "journal", journal):

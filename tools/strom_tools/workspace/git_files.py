@@ -4,18 +4,30 @@ Files are named by their path from the root, as git prints them. "Seen" are the 
 the working tree would hold: the tracked ones and the untracked ones that are not ignored.
 
 Nothing here changes the index, which is the user's (`docs/decisions/git-index.md`): the tools read it, and what
-they write of it goes into directories of their own."""
+they write of it goes into directories of their own; a commit of the working tree is made in an index file of its
+own (`_git_on_index`)."""
 
+import os
+import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
 from strom_tools.workspace.processes import run_checked, run_process
 from strom_tools.workspace.repository import Repository
 
+_IDENTITY = ["-c", "user.name=strom tools", "-c", "user.email=tools@strom.invalid"]
+"""For a commit that only the tools see: the jail has no git identity."""
+
 
 def _git(directory: Path, *arguments: str, stdin: str | None = None) -> str:
     """The stdout of a git command that must succeed (a `ToolError` with git's message if it does not)."""
     return run_checked(["git", *arguments], cwd=directory, stdin=stdin)
+
+
+def _git_on_index(directory: Path, index: Path, *arguments: str) -> str:
+    """`_git` with `index` as the index file instead of the repository's."""
+    env = {**os.environ, "GIT_INDEX_FILE": str(index)}
+    return run_checked(["git", *_IDENTITY, *arguments], cwd=directory, env=env)
 
 
 def _git_asked(directory: Path, *arguments: str) -> bool:
@@ -73,6 +85,19 @@ def checkout_index(repository: Repository, names: Sequence[str], dest: Path) -> 
     """Writes the staged contents of the files `names` into `dest`."""
     listed = "".join(f"{name}\0" for name in names)
     _git(repository.root, "checkout-index", "-z", "--stdin", f"--prefix={dest}/", stdin=listed)
+
+
+def commit_of_working_tree(repository: Repository) -> str:
+    """The hash of a new commit, child of HEAD, holding the files git sees, as they are in the working tree; the
+    index and the branches stay as they are. It hangs on no ref: `git gc` prunes it after some weeks (a tag keeps
+    it)."""
+    with tempfile.TemporaryDirectory(prefix="strom-baseline-") as tmp:
+        index = Path(tmp) / "index"
+        _git_on_index(repository.root, index, "read-tree", "HEAD")
+        _git_on_index(repository.root, index, "add", "--all", "--", ".")
+        tree = _git_on_index(repository.root, index, "write-tree").strip()
+        message = "the working tree (a baseline of strom's tools)"
+        return _git_on_index(repository.root, index, "commit-tree", tree, "-p", "HEAD", "-m", message).strip()
 
 
 def apply_patch(directory: Path, patch: Path) -> None:

@@ -10,6 +10,8 @@ Conventions for tests: `ARCHITECTURE.md`. How a change to tests is checked (coll
 `validate-change`.
 
 - Every sleep must be intentional; a docstring where it occurs explains why it is needed.
+- After a failing run, rerun only the failures: `make test ARGS="--lf"`; `--sw` (stepwise) stops at the first and starts
+  there next time.
 - Async tests run on pytest-asyncio (`asyncio_mode = "auto"`, a loop per test): a test that uses the `pools` fixture or
   `outputs_of` is `async def` (the reference semantics there: `helpers.meaning_async`); never call `asyncio.run` inside
   one. Hypothesis tests stay sync on `helpers.collect`/`meaning`/`stats_of`, each an `asyncio.run` with its own pools

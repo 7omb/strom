@@ -83,7 +83,7 @@ async def test_runs_a_function_on_its_argument(name: str) -> None:
 async def test_raises_the_users_error_as_itself(name: str) -> None:
     backend = BACKENDS[name]()
     try:
-        with pytest.raises(Noted, match="^failed on 3") as info:
+        with pytest.raises(Noted, match=r"^failed on 3") as info:
             await backend.run(fail_with_a_note, 3)
         assert info.value.__notes__ == ["noted in the worker"]
     finally:
@@ -182,10 +182,12 @@ async def test_all_items_of_an_input_come_from_the_thread_that_opened_its_iterat
     """Affinity is real on every streaming backend: more iterators open at once than there are threads."""
     io: Callable[[], StreamingBackend] = P.Threads(workers=3) if name == "threads" else Pickling(workers=3)
     threads: dict[int, set[int]] = {}
-    async with P.Pools.open_on(cpu=P.Threads(workers=1), io=io) as pools:
-        async with P.stream(P.io_stage(threads_of, concurrency=4), range(12), pools) as outputs:
-            async for item, thread in outputs:
-                threads.setdefault(item, set()).add(thread)
+    async with (
+        P.Pools.open_on(cpu=P.Threads(workers=1), io=io) as pools,
+        P.stream(P.io_stage(threads_of, concurrency=4), range(12), pools) as outputs,
+    ):
+        async for item, thread in outputs:
+            threads.setdefault(item, set()).add(thread)
     assert sorted(threads) == list(range(12))
     assert all(len(of_input) == 1 for of_input in threads.values())
     assert len(set().union(*threads.values())) == 3  # every thread took part

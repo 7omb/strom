@@ -16,6 +16,16 @@ class Session:
 
 
 @dataclass(frozen=True)
+class ToolRequested:
+    """PreToolUse: a tool call is about to run; a block stops it."""
+
+    session: Session
+    tool: str
+    command: str | None
+    """The command of a Bash call."""
+
+
+@dataclass(frozen=True)
 class ToolUsed:
     """PostToolUse: a tool call returned."""
 
@@ -48,13 +58,16 @@ class SessionEnded:
     session: Session
 
 
-type HookEvent = ToolUsed | TurnEnded | SessionStarted | SessionEnded
+type HookEvent = ToolRequested | ToolUsed | TurnEnded | SessionStarted | SessionEnded
 
 
 def parse(payload: object) -> HookEvent | None:
     """The event of a hook's input; None for an event no handler is for."""
     session = Session(_text(member(payload, "session_id")) or "unknown", _path(member(payload, "transcript_path")))
     match member(payload, "hook_event_name"):
+        case "PreToolUse":
+            command = _text(member(member(payload, "tool_input"), "command"))
+            return ToolRequested(session, str(member(payload, "tool_name")), command)
         case "PostToolUse":
             tool_input = member(payload, "tool_input")
             return ToolUsed(

@@ -81,7 +81,7 @@ def test_checkout_exports_the_checked_paths_a_revision_has_and_links_the_venv(
     write(three_states, "docs/a.md", "")
     copy = checkout(three_states, WorkingTree(), tmp_path / "out")
     assert files_in(copy) == ["pyproject.toml", "src/strom/__init__.py", "src/strom/untracked.py", "tests/test_a.py"]
-    assert (copy / ".venv").is_symlink() and os.readlink(copy / ".venv") == str(three_states.root / ".venv")
+    assert (copy / ".venv").is_symlink() and (copy / ".venv").readlink() == three_states.root / ".venv"
     assert files_in(checkout(three_states, Commit("HEAD"), tmp_path / "old")) == [
         "pyproject.toml",
         "src/strom/__init__.py",

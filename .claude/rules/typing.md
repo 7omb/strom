@@ -33,3 +33,10 @@ Ignored now:
   `tests/runtime/test_iterator_registry.py`, `tests/runtime/test_thread_backend.py`. When ty reports one of them as
   unused, remove it; when it reports another call of `next_item`, add one. The same with `partial(f, ...)` of such a
   function (2026-11-10).
+- mypy 2.4 `possibly-undefined` (2026-11-11): a name assigned in every arm of an exhaustive `match` but one that
+  returns; `# type: ignore[possibly-undefined]` at its uses (`strom_tools.commands.snapshot_commands.save_or_diff`).
+- mypy `exhaustive-match` and pyright `reportMatchNotExhaustive` on nested class patterns (`assoc_sum` in
+  `tests/stages/test_combinators.py`, 2026-11-11): both ignores on the `match` line.
+- pyright 1.1.414: `isinstance(group, RunFailed)` on the group `pytest.RaisesGroup` passes to `check` is "never an
+  instance" (`RunFailed` is an `ExceptionGroup[Exception]`), but it is (`tests/interpreters/test_streaming.py`,
+  2026-11-11).

@@ -1,4 +1,5 @@
-"""Static typing tests of the public interface (mypy), and that the library contains no `Any`."""
+"""Static typing tests of the public interface (mypy), that the library contains no `Any`, and that the example
+of `README.md` is clean."""
 
 import hashlib
 import os
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import Literal
 
 import pytest
-from helpers import ROOT
+from helpers import ROOT, readme_example
 
 # Every check is a snippet of one generated module that mypy checks (after STATIC_SETUP), together with
 # what it must result in: `reveals` the type mypy infers, `rejects` with an error containing the text,
@@ -377,4 +378,10 @@ def test_library_contains_no_any() -> None:
     pytest.importorskip("mypy")
     # The source package, not `P.__file__`: installed (tox), mypy took site-packages for a source directory.
     result = run_mypy("[mypy]\nstrict = True\ndisallow_any_expr = True\n", ROOT / "src" / "strom")
+    assert result.returncode == 0, result.stdout + result.stderr
+
+
+def test_the_readme_example_is_clean_in_mypy_strict(tmp_path: Path) -> None:
+    pytest.importorskip("mypy")
+    result = run_mypy("[mypy]\nstrict = True\n", readme_example(tmp_path))
     assert result.returncode == 0, result.stdout + result.stderr

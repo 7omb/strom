@@ -525,7 +525,7 @@ def test_a_users_exception_group_stays_whole() -> None:
     # The run's group holds the user's group as raised (message, errors), with the stage note on it.
     with pytest.RaisesGroup(
         pytest.RaisesGroup(ValueError, KeyError, match="^the user's group\nin stage"),
-        check=lambda group: isinstance(group, P.RunFailed),
+        check=lambda group: isinstance(group, P.RunFailed),  # pyright: ignore[reportUnnecessaryIsInstance]
     ) as info:
         collect(P.io_stage(raises_a_group), [1])
     (users_group,) = info.value.exceptions

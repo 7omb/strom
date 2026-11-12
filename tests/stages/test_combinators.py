@@ -94,7 +94,7 @@ def nested_sums(items: list[int]) -> list[NestedSum]:
 
 def assoc_sum(item: NestedSum) -> list[P.Left[int] | P.Right[Tagged]]:
     """Left(Left(a)) -> Left(a), Left(Right(b)) -> Right(Left(b)), Right(c) -> Right(Right(c))."""
-    match item:
+    match item:  # type: ignore[exhaustive-match]  # pyright: ignore[reportMatchNotExhaustive]
         case P.Left(P.Left(a)):
             return [P.Left(a)]
         case P.Left(P.Right(b)):
@@ -261,7 +261,7 @@ def test_nested_product_first_and_second() -> None:
     assert collect(stage, [(("x", ((1, 2), 3)), "y")]) == [(("x", ((-1, 3), 6)), "y")]
 
 
-# -------------------------------------------------------------------- laws (Hypothesis)
+# ------------------------------------------------------------------- laws, with Hypothesis
 class LawSides(NamedTuple):
     """Both sides of a law, applied to the same inputs: their meanings and their outputs in a run, as
     functions, so that the type of the inputs, different from law to law, stays inside (`law_sides`)."""

@@ -102,7 +102,7 @@ def test_run_examples_reports_the_examples_that_failed(
     ]
     assert run_command(run_examples, ["--lock"], repository, monkeypatch) == 0
     assert locked == ["bad.py", "good.py", "slow.py"]
-    with pytest.raises(ToolError, match="unknown examples: nope.py"):
+    with pytest.raises(ToolError, match=r"unknown examples: nope\.py"):
         run_command(run_examples, ["nope"], repository, monkeypatch)
 
 

@@ -290,11 +290,18 @@ def summaries(path: Path) -> tuple[int, int]:
 
 
 def loaded_natively(transcript: Path, rule: Path) -> bool:
-    """Whether Claude Code loaded the rule file `rule` itself in this session (an attachment naming it).
+    """Whether Claude Code loaded the rule file `rule` itself in this session (an attachment naming it) since the
+    last summary of the context, which drops it (Claude Code loads it again at the next read).
 
     A scan of the raw lines, not of `records`: the hook after every Bash call asks it, and parsing a transcript of
     several MB would cost more than the rest of the hook."""
     if not transcript.exists():
         return False
+    loaded = False
     with transcript.open(encoding="utf-8") as lines:
-        return any('"nested_memory"' in line and str(rule) in line for line in lines)
+        for line in lines:
+            if '"compact_boundary"' in line:
+                loaded = False
+            elif '"nested_memory"' in line and str(rule) in line:
+                loaded = True
+    return loaded

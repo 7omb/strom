@@ -55,7 +55,7 @@ in `pyproject.toml`. The checks and the fixers are defined once, as make targets
 hooks run those.
 
 ```
-make check                     # lint, type, test, examples
+make check                     # lint, type, cov (the tests with a coverage floor), examples
 make test | cov | test-watch   # pytest -n auto tests/ (cov: branch coverage of strom); more options: ARGS="-k …"
 uv run pytest -n auto tests/ …  # options e.g. --hypothesis-profile=ci, -k "static or no_any", --durations=15
 make lint | type               # ruff check, format --check, bin/check_docs.py | mypy, pyright, ty, the examples' types
@@ -69,16 +69,18 @@ git push                       # the pre-push hook: make check
 ```
 
 `bin/`: `ab.py` (interleaved A/B benchmarks of two revisions), `typing_snapshot.py` (diagnostics of mypy, pyright, ty),
-`collect_ids.py` (collected test IDs), `mutant.py` (tests against an injected bug), `run_examples.py`, `check.py`
-(`make check` in one line per target), `check_docs.py` (paths and names the docs cite are tracked; in `make lint`),
-`rename.py` (an identifier in code or a file that moves, with what the docs say of it), `sessions.py` (past Claude Code
-sessions: list, prompts, search, friction). Usage and contract: `--help`; they run with the venv's Python
-(`uv run --frozen python`, or the activated venv) and keep snapshots in `.checks/`; a revision `:index` is the staged
-state; exit code 4 means the script did not run (wrong arguments, an error), never an outcome. Each is a wrapper of its
-command in `strom_tools` (`tools/`), the package of the development tools, with the library's conventions and checkers
-and its tests in `tests/tools/`: its guide is the package's docstring (`ARCHITECTURE.md`, Tools). Claude Code hooks: the
-handlers `strom_tools.hooks.dispatcher` lists (`make fix` and the lint of edited and changed Python files and of changed
-docs, rules for Bash reads, the friction log, a note when the context was summarised).
+`collect_ids.py` (collected test IDs), `mutant.py` (tests against an injected bug), `baseline.py` (a commit of the
+working tree to compare with, the index untouched), `run_examples.py`, `check.py` (`make check` in one line per target),
+`check_docs.py` (paths and names the docs cite are tracked; in `make lint`), `rename.py` (an identifier in code or a
+file that moves, with what the docs say of it), `outline.py` (the definitions of modules with their lines: before
+reading one), `sessions.py` (past Claude Code sessions: list, prompts, search, friction). Usage and contract: `--help`;
+they run with the venv's Python (`uv run --frozen python`, or the activated venv) and keep snapshots in `.checks/`; a
+revision `:index` is the staged state; exit code 4 means the script did not run (wrong arguments, an error), never an
+outcome. Each is a wrapper of its command in `strom_tools` (`tools/`), the package of the development tools, with the
+library's conventions and checkers and its tests in `tests/tools/`: its guide is the package's docstring
+(`ARCHITECTURE.md`, Tools). Claude Code hooks: the handlers `strom_tools.hooks.dispatcher` lists (`make fix` and the
+lint of edited and changed Python files and of changed docs, rules for Bash reads, the friction log, a note when the
+context was summarised).
 
 ## Docs
 

@@ -1,7 +1,15 @@
 import json
 from pathlib import Path
 
-from strom_tools.hooks.hook_events import HookEvent, Session, SessionEnded, SessionStarted, ToolUsed, TurnEnded
+from strom_tools.hooks.hook_events import (
+    HookEvent,
+    Session,
+    SessionEnded,
+    SessionStarted,
+    ToolRequested,
+    ToolUsed,
+    TurnEnded,
+)
 from strom_tools.hooks.hook_results import CONTEXT_LIMIT, Answer, Block, Failed, Note, _name_of, answer
 
 SESSION = Session("abcd", Path("/transcripts/abcd.jsonl"))
@@ -9,12 +17,14 @@ SESSION = Session("abcd", Path("/transcripts/abcd.jsonl"))
 
 def test_an_event_is_named_as_claude_code_names_it() -> None:
     events: list[HookEvent] = [
+        ToolRequested(SESSION, "Bash", "ls"),
         ToolUsed(SESSION, "Edit", None, None),
         TurnEnded(SESSION, False),
         SessionStarted(SESSION, "startup"),
         SessionEnded(SESSION),
     ]
-    assert [_name_of(event) for event in events] == ["PostToolUse", "Stop", "SessionStart", "SessionEnd"]
+    names = ["PreToolUse", "PostToolUse", "Stop", "SessionStart", "SessionEnd"]
+    assert [_name_of(event) for event in events] == names
 
 
 def test_nothing_to_say_is_an_empty_answer() -> None:

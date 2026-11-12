@@ -200,10 +200,12 @@ def test_an_iterator_stopped_early_is_closed_on_its_worker() -> None:
     io = Pickling(workers=2)
 
     async def first_output() -> int:
-        async with P.Pools.open_on(cpu=P.Threads(workers=1), io=io) as pools:
-            async with P.stream(P.io_stage(itertools.count, buffer_size=1), [5], pools) as outputs:
-                async for out in outputs:
-                    return out
+        async with (
+            P.Pools.open_on(cpu=P.Threads(workers=1), io=io) as pools,
+            P.stream(P.io_stage(itertools.count, buffer_size=1), [5], pools) as outputs,
+        ):
+            async for out in outputs:
+                return out
         raise AssertionError("no output")
 
     assert asyncio.run(first_output()) == 5

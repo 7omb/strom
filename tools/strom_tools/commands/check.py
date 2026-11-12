@@ -1,6 +1,6 @@
 """Runs the make targets of `make check` and prints one line per target; a failing target's output in full.
 
-Run:  python bin/check.py [TARGET ...]   (default: lint type test examples, the targets of `make check`)
+Run:  python bin/check.py [TARGET ...]   (default: lint type cov examples, the targets of `make check`)
 
 All targets run, also after a failure, so one call shows every problem. A line holds the target, `ok` or
 `FAILED`, its time and the last line of its output (e.g. pytest's counts); the full output follows only for

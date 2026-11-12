@@ -15,7 +15,7 @@ ROOT = this_repository().root
 LAYERS = [
     {"tool_error", "json_objects"},
     {"workspace"},
-    {"change_checks", "example_scripts", "docs_check", "renames", "sessions"},
+    {"change_checks", "example_scripts", "docs_check", "renames", "sessions", "outlines"},
     {"hooks", "commands"},
 ]
 """The parts of the package (modules and sub-packages), bottom-up: a part imports only from the layers above its
@@ -30,12 +30,24 @@ ORDER = {
     "hooks": [
         {"hook_events", "memos"},
         {"hook_results"},
-        {"python_fixes", "docs_fixes", "rules_loading", "friction_notes"},
+        {"command_guards", "python_fixes", "docs_fixes", "rules_loading", "friction_notes", "context_notes"},
         {"dispatcher"},
     ],
     "commands": [
         {"command_line", "snapshot_commands"},
-        {"ab", "check", "check_docs", "collect_ids", "mutant", "rename", "run_examples", "sessions", "typing_snapshot"},
+        {
+            "ab",
+            "baseline",
+            "check",
+            "check_docs",
+            "collect_ids",
+            "mutant",
+            "outline",
+            "rename",
+            "run_examples",
+            "sessions",
+            "typing_snapshot",
+        },
     ],
 }
 """The modules of each sub-package in groups: a module imports only from the groups before its own."""
@@ -47,7 +59,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 
-from strom_tools.commands import {imports}  # noqa: E402
+from strom_tools.commands import {imports}
 
 if __name__ == "__main__":
     sys.exit(command_line.run({name}.main))
@@ -59,7 +71,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools"))
 
-from strom_tools.hooks import dispatcher  # noqa: E402
+from strom_tools.hooks import dispatcher
 
 if __name__ == "__main__":
     sys.exit(dispatcher.main())

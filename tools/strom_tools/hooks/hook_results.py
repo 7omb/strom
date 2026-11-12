@@ -12,7 +12,7 @@ import json
 from collections.abc import Sequence
 from dataclasses import dataclass
 
-from strom_tools.hooks.hook_events import HookEvent, SessionEnded, SessionStarted, ToolUsed, TurnEnded
+from strom_tools.hooks.hook_events import HookEvent, SessionEnded, SessionStarted, ToolRequested, ToolUsed, TurnEnded
 from strom_tools.json_objects import JsonObject
 
 CONTEXT_LIMIT = 10_000
@@ -91,6 +91,8 @@ def _within_limit(texts: Sequence[str]) -> str:
 def _name_of(event: HookEvent) -> str:
     """The event as Claude Code names it."""
     match event:
+        case ToolRequested():
+            return "PreToolUse"
         case ToolUsed():
             return "PostToolUse"
         case TurnEnded():

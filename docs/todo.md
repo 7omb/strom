@@ -100,11 +100,8 @@ Remove a task once it is done; decisions it led to go to `docs/decisions/`.
   (`strom_tools.hooks.hook_results`). Observe it once on a running session: whether the note shows at the blocked stop,
   and again at the next one.
 
-- [ ] With the `deny` rule for the staging commands in `.claude/settings.json` (`docs/decisions/git-index.md`): whether
-  it also stops the baseline recipe of `.claude/rules/baselines.md`, which runs `git add` on a scratch index
-  (`GIT_INDEX_FILE`). If so, that recipe becomes the baseline command of `docs/plans/retro-review.md`, S2.
-
-- [ ] The hook command for a Bash event takes 71 ms, 7 ms more than before the review of the tools
-  (`docs/decisions/tool-package.md`): most of it imports `strom_tools.sessions.transcripts` for `loaded_natively`.
-  Measure whether moving the raw scan out of `transcripts` (or importing it in `after_bash`) takes it back, against the
-  clarity of one module for the transcripts.
+- [ ] The hook command runs twice per Bash call since the PreToolUse guard (`strom_tools.hooks.command_guards`): about
+  150 ms before the call (91–161 ms in five runs, 2026-11-11), 71 ms after it; Python's start-up is 35 ms, importing
+  `strom_tools.hooks.dispatcher` with every handler about 100 ms (`python3 -X importtime`: `hook_events` 35 ms with what
+  it imports, `docs_check` 15 ms). Try importing an event's handlers only for that event (a function per table in the
+  dispatcher), against one table that shows every handler.

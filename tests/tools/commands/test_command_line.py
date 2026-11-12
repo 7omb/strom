@@ -82,5 +82,5 @@ def test_help_shows_the_usage_as_written(capsys: pytest.CaptureFixture[str]) -> 
 
 def test_a_missing_module_is_an_error_before_it_looks_like_failing_tests() -> None:
     require_modules("json", "pytest")
-    with pytest.raises(ToolError, match="no_such_module_a, no_such_module_b not installed for .*: run with `uv run"):
+    with pytest.raises(ToolError, match=r"no_such_module_a, no_such_module_b not installed for .*: run with `uv run"):
         require_modules("json", "no_such_module_a", "no_such_module_b")

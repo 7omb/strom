@@ -71,6 +71,27 @@ def test_no_function_changes_the_index() -> None:
         "checkout-index",
         "apply",
     }
+    on_an_index = set(re.findall(r'_git_on_index\(\s*[\w.]+,\s*\w+,\s*"([\w-]+)"', source))
+    assert on_an_index == {"read-tree", "add", "write-tree", "commit-tree"}, "only on an index file of its own"
+
+
+def test_a_commit_of_the_working_tree_holds_what_git_sees_and_changes_no_index(files: Repository) -> None:
+    index_before = git(files, "ls-files", "--stage")
+    status_before = git(files, "status", "--porcelain")
+    head = git(files, "rev-parse", "HEAD")
+    made = git_files.commit_of_working_tree(files)
+    assert git(files, "ls-files", "--stage") == index_before
+    assert git(files, "status", "--porcelain") == status_before
+    assert git(files, "rev-parse", "HEAD") == head
+    assert git(files, "rev-parse", f"{made}^") == head
+    assert git(files, "ls-tree", "-r", "--name-only", made).split() == [
+        ".gitignore",
+        "docs/modified.md",
+        "kept.py",
+        "staged.py",
+        "untracked.py",
+    ]
+    assert git(files, "show", f"{made}:docs/modified.md") == "after"
 
 
 def test_a_commit_is_named_by_what_git_resolves_to_one(files: Repository) -> None:

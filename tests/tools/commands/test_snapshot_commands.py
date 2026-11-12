@@ -1,4 +1,5 @@
-"""`collect_ids` and `typing_snapshot`: a snapshot saved and compared, and the comparison with a revision."""
+"""`collect_ids` and `typing_snapshot`: a snapshot saved and compared, and the comparison with a revision (also a
+`baseline`)."""
 
 from collections.abc import Sequence
 from pathlib import Path
@@ -7,7 +8,7 @@ import pytest
 from tool_helpers import commit, run_command, write
 
 from strom_tools.change_checks.typing_diagnostics import Checker, checker_of
-from strom_tools.commands import collect_ids, command_line, typing_snapshot
+from strom_tools.commands import baseline, collect_ids, command_line, typing_snapshot
 from strom_tools.tool_error import ToolError
 from strom_tools.workspace.repository import Repository
 
@@ -46,6 +47,16 @@ def test_collected_ids_are_compared_with_those_of_a_revision(
     assert run_command(collect_ids, ["diff", "--against", "."], tested, monkeypatch) == 0
     with pytest.raises(ToolError, match="no revision nowhere"):
         run_command(collect_ids, ["diff", "--against", "nowhere"], tested, monkeypatch)
+
+
+def test_a_baseline_keeps_the_uncommitted_tree_to_compare_later_edits_with(
+    tested: Repository, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run_command(baseline, [], tested, monkeypatch) == 0
+    made = capsys.readouterr().out.strip()  # with the untracked tests/test_b.py
+    write(tested, "tests/test_b.py", "def test_three() -> None: ...\n")
+    assert run_command(collect_ids, ["diff", "--against", made], tested, monkeypatch) == 1
+    assert capsys.readouterr().out.splitlines()[:2] == ["- tests/test_b.py::test_two", "+ tests/test_b.py::test_three"]
 
 
 @pytest.fixture

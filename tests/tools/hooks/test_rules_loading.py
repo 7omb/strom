@@ -4,10 +4,10 @@ import pytest
 from tool_helpers import write, write_transcript
 
 from strom_tools.docs_check import RuleNote
-from strom_tools.hooks.hook_events import Session, SessionEnded, ToolUsed
+from strom_tools.hooks.hook_events import Session, SessionEnded, SessionStarted, ToolUsed
 from strom_tools.hooks.hook_results import CONTEXT_LIMIT, Note
 from strom_tools.hooks.memos import recalled, remembered_at
-from strom_tools.hooks.rules_loading import _loaded, _matches, _to_add, _touched, after_bash, at_end
+from strom_tools.hooks.rules_loading import _loaded, _matches, _to_add, _touched, after_bash, at_end, at_start
 from strom_tools.workspace.repository import Repository
 
 TESTS_RULE = '---\npaths:\n  - "tests/**"\n  - "benchmarks/**"\n---\n\n# Tests\n\nNo sleeps.\n'
@@ -98,6 +98,14 @@ def test_a_rule_claude_code_loaded_itself_is_not_added_again(ruled: Repository, 
     session = Session("abcd", write_transcript(tmp_path / "abcd.jsonl", [loaded]))
     result = after_bash(ruled, bash("cat tests/runtime/test_pools.py pyproject.toml", session))
     assert result == Note(for_claude="Contents of .claude/rules/tooling.md:\n\n# Tooling\n\nUse make.")
+
+
+def test_a_summary_of_the_context_forgets_what_was_added_before_it(ruled: Repository) -> None:
+    assert isinstance(after_bash(ruled, bash("ls tests")), Note)
+    assert at_start(ruled, SessionStarted(SESSION, "resume")) is None
+    assert after_bash(ruled, bash("ls tests")) is None, "a resumed session still has it"
+    assert at_start(ruled, SessionStarted(SESSION, "compact")) is None
+    assert isinstance(after_bash(ruled, bash("ls tests")), Note), "the summary dropped it"
 
 
 def test_the_end_of_a_session_forgets_what_was_loaded_in_it(ruled: Repository) -> None:

@@ -26,7 +26,8 @@ Uncommitted changes now:
 
 `REV` below is the revision the change starts from: `HEAD` while it is uncommitted, else e.g. `main~2`; `:index` is the
 state the user staged (compare with it; never stage a version yourself: the index is the user's, `CLAUDE.md`, Process).
-A baseline of an uncommitted tree is a commit made beside the index (`.claude/rules/baselines.md`).
+For a change that starts from an uncommitted tree (the second change of a session), `bin/baseline.py` before its first
+edit prints the REV: a commit of the working tree made beside the index (`.claude/rules/baselines.md`).
 
 ## Steps
 
@@ -71,7 +72,9 @@ A baseline of an uncommitted tree is a commit made beside the index (`.claude/ru
    - an import that reads as a layer break (`ARCHITECTURE.md`, Packages);
    - a name off `GLOSSARY.md` or the naming conventions.
 
-   Fix what it finds, then repeat the steps the fixes touch; what needs the user's decision goes into the report.
+   Fix what it finds, then repeat the steps the fixes touch; what needs the user's decision goes into the report. When
+   the user agrees, the subagent `diff-reviewer` (`.claude/agents/diff-reviewer.md`) does this read with a context of
+   its own: give it REV and the purpose of the change; it costs a cold start.
 
 ## Report
 

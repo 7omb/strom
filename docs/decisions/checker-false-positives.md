@@ -4,7 +4,9 @@ A false positive of one checker gets that checker's ignore comment on its line, 
 `.claude/rules/typing.md`, and the code keeps the shape the other two accept (2026-11-11). Each checker has a comment of
 its own and fails on one it no longer needs, so an ignore expires with its bug: `# type: ignore[code]` is mypy's alone
 (pyright's `enableTypeIgnoreComments` is off), `# pyright: ignore[rule]` is checked by
-`reportUnnecessaryTypeIgnoreComment`, `# ty: ignore[rule]` by `unused-ignore-comment` as an error
+`reportUnnecessaryTypeIgnoreComment`, `# ty: ignore[rule]` by `unused-ignore-comment` as an error, and ruff's
+`# noqa: CODE` by `RUF100` (2026-11-11: 17 had outlived their rule, among them an `E402` in every wrapper); mypy's
+`ignore-without-code` makes every one of its ignores name the code
 
 **Rejected**
 

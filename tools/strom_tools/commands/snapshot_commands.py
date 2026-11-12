@@ -43,7 +43,8 @@ def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--against", metavar="REV", help="diff: compare with revision REV instead of a snapshot")
 
 
-def request(repository: Repository, parser: argparse.ArgumentParser, args: argparse.Namespace) -> Request:
+# RET503: ruff does not know that `parser.error` exits (2026-11-11).
+def request(repository: Repository, parser: argparse.ArgumentParser, args: argparse.Namespace) -> Request:  # noqa: RET503
     """What the arguments of `add_arguments` ask for (a usage error for `--against` without `diff`, a `ToolError`
     for a revision this repository does not have)."""
     chosen: str = args.action
@@ -88,6 +89,6 @@ def save_or_diff(
             with tempfile.TemporaryDirectory(prefix=f"strom-{kind}-") as tmp:
                 before = lines_in(checkout(repository, revision, Path(tmp)))
             label = f"in {as_argument(revision)}"
-    diff = line_diffs.diff_lines(before, lines_in(repository.root))
-    print(line_diffs.rendered(diff, what, label))
+    diff = line_diffs.diff_lines(before, lines_in(repository.root))  # type: ignore[possibly-undefined]
+    print(line_diffs.rendered(diff, what, label))  # type: ignore[possibly-undefined]
     return 1 if line_diffs.differs(diff) else 0

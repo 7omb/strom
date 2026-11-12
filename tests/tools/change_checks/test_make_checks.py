@@ -1,4 +1,5 @@
 import re
+from pathlib import Path
 
 from tool_helpers import with_makefile
 
@@ -23,4 +24,6 @@ def test_the_summary_is_one_line_with_the_last_line_of_the_output() -> None:
 
 
 def test_the_default_targets_are_those_of_make_check() -> None:
-    assert TARGETS == ["lint", "type", "test", "examples"]
+    makefile = (Path(__file__).resolve().parents[3] / "Makefile").read_text(encoding="utf-8")
+    (prerequisites,) = re.findall(r"^check: (.*)$", makefile, re.MULTILINE)
+    assert prerequisites.split() == TARGETS

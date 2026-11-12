@@ -1,6 +1,11 @@
-"""Tests of the package as users see it: the public interface."""
+"""Tests of the package as users see it: the public interface, and the example of `README.md`."""
+
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
+from helpers import readme_example
 
 import strom as P
 from strom import backends, metrics
@@ -101,3 +106,14 @@ def test_public_interface_for_backend_implementers() -> None:
             "close_all_process_handles",
         ]
     )
+
+
+def test_the_readme_example_runs(tmp_path: Path) -> None:
+    """As a script of its own: its `cpu_stage` runs in worker processes, which import its `__main__`."""
+    done = subprocess.run(
+        [sys.executable, readme_example(tmp_path)], cwd=tmp_path, capture_output=True, text=True, timeout=60
+    )
+    assert done.returncode == 0, done.stderr
+    *values, total = done.stdout.splitlines()
+    assert len(values) == 20, "one per input"
+    assert total == f"total: {sum(map(int, values))}"

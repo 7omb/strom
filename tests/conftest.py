@@ -19,10 +19,18 @@ run mypy in a subprocess and are skipped if mypy is not installed. Functions use
 defined at module level so that they can be pickled.
 
 Hypothesis profiles: `dev` by default, `ci` with `pytest --hypothesis-profile=ci` (pytest loads this
-file before the Hypothesis plugin applies that option, which a test module's own profile would override)."""
+file before the Hypothesis plugin applies that option, which a test module's own profile would override).
 
+A hung test: `kill -USR1 PID` of its pytest process (an xdist worker, with `-n`) writes the stack of every
+thread of it to `.checks/stacks/PID.txt` (stderr is pytest's capture), and the test goes on; the file goes at
+the end of the run if it stayed empty."""
+
+import faulthandler
+import os
+import signal
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from typing import TextIO
 
 import helpers
 import pytest
@@ -37,6 +45,25 @@ from strom_tools.workspace.repository import Repository
 settings.register_profile("dev", deadline=None, max_examples=60, suppress_health_check=[HealthCheck.too_slow])
 settings.register_profile("ci", settings.get_profile("dev"), max_examples=300)
 settings.load_profile("dev")
+
+_STACKS = Path(__file__).resolve().parents[1] / ".checks" / "stacks" / f"{os.getpid()}.txt"
+
+
+_stacks_files: list[TextIO] = []
+
+
+def pytest_configure() -> None:
+    _STACKS.parent.mkdir(parents=True, exist_ok=True)
+    _stacks_files.append(_STACKS.open("w", encoding="utf-8"))
+    faulthandler.register(signal.SIGUSR1, file=_stacks_files[-1], all_threads=True)
+
+
+def pytest_unconfigure() -> None:
+    faulthandler.unregister(signal.SIGUSR1)
+    for file in _stacks_files:
+        file.close()
+    if _STACKS.exists() and _STACKS.stat().st_size == 0:
+        _STACKS.unlink()
 
 
 @pytest.fixture(autouse=True)

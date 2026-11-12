@@ -37,9 +37,10 @@ class _Report(TypedDict):
 
 
 def measure(repository: Repository, src: Path, out: Path, metric: str, pytest_args: Sequence[str]) -> dict[str, float]:
-    """One run of the benchmarks with the library in `src`: `metric` per benchmark (`group: name`)."""
+    """One run of the benchmarks with the library in `src`: `metric` per benchmark (`group: name`), in the order
+    they are defined (not pytest-randomly's), the same in every run."""
     run = run_process(
-        pytest_command("benchmarks/benchmark.py", "-q", f"--benchmark-json={out}", *pytest_args),
+        pytest_command("benchmarks/benchmark.py", "-q", "-p", "no:randomly", f"--benchmark-json={out}", *pytest_args),
         cwd=repository.root,
         timeout=_TIMEOUT,
         env=python_path_env(src),

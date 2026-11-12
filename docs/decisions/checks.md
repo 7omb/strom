@@ -1,12 +1,13 @@
 # Checks
 
-One definition of each check, a make target (2026-11-11); `make check` is lint, type, test and examples. tox runs the
-targets (the envs of a Python version, and the benchmarks' results, on their own interpreter against the installed
-package), and so do the git hooks: at a commit `make lint` and `make type`, beside the fixers of the changed files; at a
-push `make check`, so the tests run without anyone asking (`pre-commit install` sets up both hooks; direnv does it). The
-fixers are a target too (`make fix`, on every file or on `FILES`): ruff's fixes and its formatter, and mdformat as the
-commit hook installs it. The commit hook, the Claude Code hooks and `bin/rename.py` run that target and the parts of
-`lint` (`lint-python`, which takes `FILES` and ruff's options, and `lint-docs`) instead of the tools
+One definition of each check, a make target (2026-11-11); `make check` is lint, type, cov (the tests with `fail_under`
+of coverage, about a second longer than `test`, 2026-11-11) and examples. tox runs the targets (the envs of a Python
+version, and the benchmarks' results, on their own interpreter against the installed package), and so do the git hooks:
+at a commit `make lint` and `make type`, beside the fixers of the changed files; at a push `make check`, so the tests
+run without anyone asking (`pre-commit install` sets up both hooks; direnv does it). The fixers are a target too
+(`make fix`, on every file or on `FILES`): ruff's fixes and its formatter, and mdformat as the commit hook installs it.
+The commit hook, the Claude Code hooks and `bin/rename.py` run that target and the parts of `lint` (`lint-python`, which
+takes `FILES` and ruff's options, and `lint-docs`) instead of the tools
 
 **Rejected**
 

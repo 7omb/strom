@@ -14,6 +14,7 @@ itself it is none (`serve` clears the flag): a daemon may not start processes, a
 may, as in a `ProcessPoolExecutor`."""
 
 import asyncio
+import contextlib
 import multiprocessing
 import pickle
 import threading
@@ -159,10 +160,8 @@ class _ProcessWorker(Worker):
         if self._child is None:
             return
         process, conn = self._child
-        try:
+        with contextlib.suppress(OSError):  # it is gone already
             conn.send_bytes(_END)
-        except OSError:
-            pass  # it is gone already
         process.join()
         conn.close()
         self._child = None

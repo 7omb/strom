@@ -27,8 +27,8 @@ Where each kind of fact lives, once (point there, don't copy it):
 | Terms | `GLOSSARY.md` |
 | Usage of a script, mechanism of the code | its docstring |
 
-- `CLAUDE.md` is loaded into every session: keep it under about 8 KB (measure bytes, not lines); delete what code,
-  docstrings or tests show at a glance.
+- `CLAUDE.md` is loaded into every session: at most `strom_tools.docs_check.SESSION_DOC_LIMIT` bytes (the docs check);
+  delete what code, docstrings or tests show at a glance.
 - A note in `.claude/rules/` holds one topic, and its `paths` name the files of that work (a script a command names
   counts: `strom_tools.hooks.rules_loading`), so it loads only there; its body stays under the limit of the docs check.
   A gotcha goes where it is said when it happens: enforced (a deny rule, a check), else the tool's message, else the

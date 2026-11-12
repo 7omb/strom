@@ -47,6 +47,17 @@
             mkdir -p $out/bin
             ln -s ${pkgs.python314FreeThreading}/bin/python3.14t $out/bin/
           '')
+          # Single tools, not their collections: ps, pgrep and pkill of procps (leftover pytest and forkserver
+          # workers), taskset of util-linux (a probe pinned to the fast cores):
+          (pkgs.runCommand "process-tools" { } ''
+            mkdir -p $out/bin
+            ln -s ${pkgs.procps}/bin/ps ${pkgs.procps}/bin/pgrep ${pkgs.procps}/bin/pkill $out/bin/
+            ln -s ${pkgs.util-linux}/bin/taskset $out/bin/
+          '')
+          # Profiles a command it starts (`py-spy record -- CMD`; ptrace reaches only its own children), and
+          # times a short command over many runs (the hook command):
+          py-spy
+          hyperfine
         ];
         jailed-claude = jail "jailed-claude" claude-pkg (with jail.combinators; [
           network
@@ -73,6 +84,8 @@
             pre-commit
             entr
             gnumake
+            py-spy
+            hyperfine
             jailed-claude
           ] ++ pythonVersions;
           # Let uv use the python version of this flake by default:

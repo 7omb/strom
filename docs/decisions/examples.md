@@ -7,7 +7,9 @@ tests lost only `default_cpu_workers`/`default_io_workers`, now tested; function
 backend: `test_process_backend_runs_functions_of_the_main_script`). Each example is a uv script (2026-11-08): a PEP 723
 header with its dependencies (strom as an editable path source) and a lock of its own (`<name>.py.lock`), run with
 `uv run --script --locked` and type-checked against its own environment (`--type`, part of `make type`), so the dev
-environment carries no example's dependencies and examples may pin different versions of one package
+environment carries no example's dependencies and examples may pin different versions of one package. The example of
+`README.md` (2026-11-11), which needs only strom and checks no results of its own, is run and checked with mypy strict
+by the tests (`test_the_readme_example_runs` in `tests/test_init.py`): nothing kept it in step with the API before
 
 **Rejected**
 
@@ -20,4 +22,8 @@ environment carries no example's dependencies and examples may pin different ver
 - tests importing the examples (tests depend on reference code)
 - `tests/test_examples.py`, also behind a deselected marker (reference code in the suite; nothing runs it by default)
 - running them in-process (`__main__` would be pytest: the process backend could not import their functions)
+- a pytest plugin for the README's block (2026-11-12): each runs it in pytest's process. `pytest-markdown-docs` 0.9.2
+  passed without running it (the `__main__` guard), and failed without the guard (`score` not picklable from the exec'd
+  namespace); `pytest-examples` 0.0.18 as `__main__` failed the same way ("module '__main__' has no attribute 'score'").
+  It also pulls in black and a ruff of its own for its lint
 - a plain make loop (no timeout, no killing the pool workers)

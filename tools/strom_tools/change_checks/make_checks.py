@@ -9,8 +9,8 @@ from strom_tools.workspace.make_runs import run_make
 from strom_tools.workspace.processes import output
 from strom_tools.workspace.repository import Repository
 
-TARGETS = ["lint", "type", "test", "examples"]
-"""The targets of `make check`."""
+TARGETS = ["lint", "type", "cov", "examples"]
+"""The targets of `make check` (a test compares them with the Makefile)."""
 
 
 @dataclass(frozen=True)

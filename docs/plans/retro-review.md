@@ -3,7 +3,7 @@
 Scope: the eight sessions with work since the retrospective of 2026-11-08, by `bin/sessions.py` (friction, prompts,
 search) and the transcripts: what the user had to correct or ask twice, hand work a script would do, hook blocks and
 tool errors with a common cause. Counts are per session id prefix. Delete this file once its findings are done or
-rejected (rejections with their reason go to `docs/decisions/self-improvement.md`). Open: S2, X1.
+rejected (rejections with their reason go to `docs/decisions/self-improvement.md`). Open: X1.
 
 IDs: W the way of working, S scripts and commands, H hooks and checks, T the retrospective's own tools, X carried over.
 
@@ -29,13 +29,10 @@ IDs: W the way of working, S scripts and commands, H hooks and checks, T the ret
   over the limit are listed.
 - **S4**: tests on 3.14t run with `tox -e 3.14t -- ARGS` (`CLAUDE.md`, Commands; `.claude/rules/tox.md`).
 
-### S2. The baseline of an uncommitted tree is made by hand
+### S2: implemented (2026-11-11)
 
-- **Evidence**: `git commit-tree` by hand four times in b5d6f469 and four times in 0837df3e: the second and later
-  changes of a session start from a tree that is not committed. The note `.claude/rules/baselines.md` holds the recipes.
-- **Fix**: a script in `bin/` that prints the id of a dangling commit of the working tree (the files git sees, the index
-  untouched); `validate-change` names it as REV for such a change, and the recipes go. Its place: a function of
-  `strom_tools.change_checks.revisions` with a command of its own.
+- **S2**: `bin/baseline.py` prints a commit of the working tree, made in an index file of its own
+  (`strom_tools.workspace.git_files.commit_of_working_tree`, where every git call is); `validate-change` names it.
 
 ## H. Hooks and checks
 

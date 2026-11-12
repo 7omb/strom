@@ -5,12 +5,15 @@ Claude can't write `.claude/settings.json` (self-modification): so the settings 
 decided here and in the handler modules. What the fixers and the checks are, the Makefile says: the handlers
 run its targets (`make fix`, `make lint-python`, `make lint-docs`), as the git hooks do.
 
+  PreToolUse Bash                      `command_guards.before_bash`: refuse a command against an agreement
   PostToolUse Edit, MultiEdit, Write   `python_fixes.after_edit`: fix and lint the edited Python file
   PostToolUse Bash                     `rules_loading.after_bash`: load the `.claude/rules` a command touched
   Stop                                 `python_fixes.at_stop`: fix and lint every changed Python file
                                        `docs_fixes.at_stop`: format the changed Markdown files, check the docs
                                        `friction_notes.at_stop`: say when the session's context was summarised
   SessionStart                         `friction_notes.at_start`: suggest the skill `retro` after much friction
+                                       `rules_loading.at_start`: after a summary, forget the rules it added
+                                       `context_notes.at_start`: after a summary, the plans and changed files
   SessionEnd                           `friction_notes.at_end`: log the session's friction
                                        `rules_loading.at_end`: forget what it loaded in the session
 
@@ -20,14 +23,23 @@ event runs; one that raises is reported and never blocks."""
 import sys
 from collections.abc import Callable, Mapping, Sequence
 
-from strom_tools.hooks import docs_fixes, friction_notes, python_fixes, rules_loading
-from strom_tools.hooks.hook_events import HookEvent, SessionEnded, SessionStarted, ToolUsed, TurnEnded, parse
+from strom_tools.hooks import command_guards, context_notes, docs_fixes, friction_notes, python_fixes, rules_loading
+from strom_tools.hooks.hook_events import (
+    HookEvent,
+    SessionEnded,
+    SessionStarted,
+    ToolRequested,
+    ToolUsed,
+    TurnEnded,
+    parse,
+)
 from strom_tools.hooks.hook_results import Failed, HookResult, answer
 from strom_tools.json_objects import parsed
 from strom_tools.workspace.repository import Repository, this_repository
 
 type _Handler[E] = Callable[[Repository, E], HookResult]
 
+_BEFORE_TOOL: Mapping[str, Sequence[_Handler[ToolRequested]]] = {"Bash": [command_guards.before_bash]}
 _AFTER_TOOL: Mapping[str, Sequence[_Handler[ToolUsed]]] = {
     "Edit": [python_fixes.after_edit],
     "MultiEdit": [python_fixes.after_edit],
@@ -35,13 +47,19 @@ _AFTER_TOOL: Mapping[str, Sequence[_Handler[ToolUsed]]] = {
     "Bash": [rules_loading.after_bash],
 }
 _AT_STOP: Sequence[_Handler[TurnEnded]] = [python_fixes.at_stop, docs_fixes.at_stop, friction_notes.at_stop]
-_AT_START: Sequence[_Handler[SessionStarted]] = [friction_notes.at_start]
+_AT_START: Sequence[_Handler[SessionStarted]] = [
+    friction_notes.at_start,
+    rules_loading.at_start,
+    context_notes.at_start,
+]
 _AT_END: Sequence[_Handler[SessionEnded]] = [friction_notes.at_end, rules_loading.at_end]
 
 
 def _results(repository: Repository, event: HookEvent) -> list[HookResult | Failed]:
     """What each handler of the event returns, in the order of its table."""
     match event:
+        case ToolRequested():
+            return [_run(handler, repository, event) for handler in _BEFORE_TOOL.get(event.tool, ())]
         case ToolUsed():
             return [_run(handler, repository, event) for handler in _AFTER_TOOL.get(event.tool, ())]
         case TurnEnded():

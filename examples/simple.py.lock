@@ -20,6 +20,9 @@ dev = [
     { name = "pytest", specifier = ">=9.2.0" },
     { name = "pytest-asyncio" },
     { name = "pytest-cov" },
+    { name = "pytest-randomly", specifier = ">=5.1" },
+    { name = "pytest-repeat", specifier = ">=0.9.4" },
+    { name = "pytest-timeout", specifier = ">=2.4" },
     { name = "pytest-xdist" },
     { name = "tox" },
 ]

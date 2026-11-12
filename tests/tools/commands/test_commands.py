@@ -13,10 +13,12 @@ from strom_tools.commands import command_line, mutant
 
 COMMANDS = [
     "ab",
+    "baseline",
     "check",
     "check_docs",
     "collect_ids",
     "mutant",
+    "outline",
     "rename",
     "run_examples",
     "sessions",

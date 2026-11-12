@@ -21,7 +21,8 @@ from strom_tools.example_scripts import (
 from strom_tools.tool_error import ToolError
 from strom_tools.workspace.repository import Repository
 
-HEADER = "\n".join(  # line by line: a `# /// script` line of its own would make this file a script for the checkers
+# Line by line (FLY002): a `# /// script` line of its own would make this file a script for the checkers.
+HEADER = "\n".join(  # noqa: FLY002
     [
         "# /// script",
         '# requires-python = ">=3.14"',
@@ -42,10 +43,10 @@ def test_an_example_without_a_script_header_is_an_error(tmp_path: Path) -> None:
     (tmp_path / "bare.py").write_text('# /// script\n# requires-python = ">=3.14"\n# ///\n')
     _require_header(tmp_path / "bare.py")
     (tmp_path / "plain.py").write_text('print("no header")\n')
-    with pytest.raises(ToolError, match="plain.py: no `# /// script` header"):
+    with pytest.raises(ToolError, match=r"plain\.py: no `# /// script` header"):
         _require_header(tmp_path / "plain.py")
     (tmp_path / "unclosed.py").write_text(HEADER.replace("# ///\n", ""))
-    with pytest.raises(ToolError, match="unclosed.py: no `# /// script` header"):
+    with pytest.raises(ToolError, match=r"unclosed\.py: no `# /// script` header"):
         _require_header(tmp_path / "unclosed.py")
 
 

@@ -4,6 +4,7 @@ from tool_helpers import commit, write
 from strom_tools.docs_check import (
     _MISSING,
     NOTE_LIMIT,
+    SESSION_DOC_LIMIT,
     UNTRACKED,
     LongLine,
     MissingCitation,
@@ -164,7 +165,7 @@ def test_rule_notes_are_the_rules_files_with_their_paths_and_body(documented: Re
 def test_a_rules_file_needs_paths_that_match_tracked_files(documented: Repository) -> None:
     scoped = '---\npaths:\n  - "tests/**"\n  - "bin/new.py"\n  - "gone/**"\n---\n\n# Tests\n'
     assert check(documented, scoped, ".claude/rules/tests.md") == [
-        "bin/new.py matches no tracked file: the note never loads for it",
+        f"bin/new.py{UNTRACKED}",  # there: a `git add` makes the note load for it
         "gone/** matches no tracked file: the note never loads for it",
     ]
     unscoped = check(documented, "# Notes\n", ".claude/rules/notes.md")
@@ -179,6 +180,16 @@ def test_a_rules_file_stays_under_the_note_limit(documented: Repository) -> None
     assert check(documented, f"{front}{body}\nmore\n", ".claude/rules/tests.md") == [
         f"{len(body) + 5} characters of text (at most {NOTE_LIMIT}): a second topic, a note of its own"
     ]
+
+
+def test_claude_md_stays_under_its_limit_in_bytes(documented: Repository) -> None:
+    within = "".join(["ü" * 49 + "\n"] * 80)  # 7,920 bytes: two each
+    assert len(within.encode()) <= SESSION_DOC_LIMIT
+    assert check(documented, within, "CLAUDE.md") == []
+    over = within + "ü" * 50 + "\n"  # 8,021 bytes in 4,021 characters
+    (problem,) = check(documented, over, "CLAUDE.md")
+    assert problem.startswith(f"8021 bytes (at most {SESSION_DOC_LIMIT}): every session loads it")
+    assert check(documented, over, "docs/CLAUDE.md") == [], "only the one at the root"
 
 
 def test_listed_takes_the_files_it_is_given(documented: Repository) -> None:

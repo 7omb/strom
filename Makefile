@@ -13,8 +13,9 @@ python_files := $(if $(FILES),$(filter %.py %.pyi,$(FILES)),.)
 # the Markdown files as pre-commit takes them (nothing: FILES without any)
 markdown_files := $(if $(FILES),$(if $(filter %.md,$(FILES)),--files $(filter %.md,$(FILES))),--all-files)
 
+# cov, not test: the same tests with a coverage floor (pyproject.toml), about a second longer.
 .PHONY: check
-check: lint type test examples
+check: lint type cov examples
 
 .PHONY: test
 test:
@@ -24,6 +25,7 @@ test:
 cov:
 	$(PYTEST) --cov $(ARGS)
 
+# entr comes from the dev shell; the jail of Claude Code has none.
 .PHONY: test-watch
 test-watch:
 	find . -name '*.py' | entr $(PYTEST) $(ARGS)
@@ -61,14 +63,15 @@ type:
 	ty check
 	$(RUN) python bin/run_examples.py --type
 
+# The benchmarks in the order they are defined, the same in every run (no pytest-randomly).
 .PHONY: bench
 bench:
-	$(RUN) pytest benchmarks/benchmark.py $(ARGS)
+	$(RUN) pytest benchmarks/benchmark.py -p no:randomly $(ARGS)
 
 # Each benchmark once, without timing: checks that their results are right.
 .PHONY: bench-results
 bench-results:
-	$(RUN) pytest benchmarks/benchmark.py --benchmark-disable $(ARGS)
+	$(RUN) pytest benchmarks/benchmark.py -p no:randomly --benchmark-disable $(ARGS)
 
 .PHONY: build
 build:

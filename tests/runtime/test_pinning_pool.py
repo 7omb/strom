@@ -3,6 +3,7 @@ order a thread takes its calls, and what the shutdown does with those still queu
 
 The workers run their calls in their own thread and log to the test; calls are held by events, never by sleeps."""
 
+import contextlib
 import gc
 import threading
 import time
@@ -81,10 +82,8 @@ def pool_of(workers: int, made: Workers) -> Generator[PinningPool]:
     try:
         yield pool
     finally:
-        try:
+        with contextlib.suppress(CloseFailed, BaseExceptionGroup):  # a test of failing closes has seen them
             pool.shutdown()
-        except CloseFailed, BaseExceptionGroup:
-            pass  # a test of failing closes has seen them
 
 
 def held(pool: PinningPool) -> tuple[Gate, Future[int]]:
@@ -177,9 +176,8 @@ def test_a_pinned_call_goes_to_its_thread_also_when_others_are_idle() -> None:
 
 
 def test_a_worker_the_pool_does_not_have_is_a_lookup_error() -> None:
-    with pool_of(1, Workers()) as pool:
-        with pytest.raises(LookupError, match="no worker gone"):
-            pool.submit(thread_of, None, WorkerId("gone"))
+    with pool_of(1, Workers()) as pool, pytest.raises(LookupError, match="no worker gone"):
+        pool.submit(thread_of, None, WorkerId("gone"))
 
 
 def test_a_call_without_affinity_avoids_an_idle_thread_whose_worker_holds_what_pinned_calls_need() -> None:
@@ -221,7 +219,7 @@ def test_a_cleanup_runs_on_every_started_thread_behind_its_running_call() -> Non
             cleanup.result(WAIT_LIMIT_TIME)
         threads = {future.result(WAIT_LIMIT_TIME) for _, future in gates}
         assert {thread for what, thread in ran if what == "cleanup"} == threads
-        assert [thread for what, thread in ran if what == "shared"][0] not in threads
+        assert next(thread for what, thread in ran if what == "shared") not in threads
 
 
 def test_the_shutdown_cancels_queued_calls_runs_queued_cleanups_and_closes_the_workers() -> None:

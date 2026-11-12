@@ -101,7 +101,7 @@ follows the conventions below, with the library's checker settings. Its guide is
 - `workspace`: the repository as a value (`Repository`), every call of git and of make, and every process a tool starts
   (`processes`: in a group of its own that a timeout kills, its outcome a `ProcessRun`)
 - the tools, which import nothing of each other: `change_checks` (skill `validate-change`), `example_scripts`,
-  `docs_check`, `renames`, `sessions`
+  `docs_check`, `renames`, `sessions`, `outlines`
 - entry points: `hooks` (the handlers and their dispatcher) and `commands` (one per script); only they read arguments or
   stdin, print and exit. Below them a function takes the repository, returns data and raises `ToolError`.
 
@@ -165,9 +165,10 @@ What the code doesn't show at a glance. The decisions in `docs/decisions/` refer
 
 **Code**
 
-- Everything is clean in mypy strict (the library and the tools also `disallow_any_expr`), pyright (default mode; the
-  library and the tools strict except the rules in `docs/decisions/pyright-strict.md`) and ruff; the library and the
-  tools also in ty. ty diagnostics in `tests/`: add none. Checker limitations: `.claude/rules/typing.md`.
+- Everything is clean in mypy strict with further error codes (the library and the tools also `disallow_any_expr` and
+  `warn_unreachable`), pyright (strict except the rules in `docs/decisions/pyright-strict.md`; outside the library and
+  the tools also without `reportPrivateUsage` and `reportUnknownLambdaType`), ty and ruff (the rule sets in
+  `pyproject.toml`). Checker limitations: `.claude/rules/typing.md`.
 - A false positive of one checker gets that checker's ignore comment on its line, with a dated entry in
   `.claude/rules/typing.md`; the code keeps the shape the other two accept. No code is shaped around a checker's bug: a
   shape stays when the bug is fixed, an ignore then fails the check.

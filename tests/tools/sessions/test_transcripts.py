@@ -210,3 +210,6 @@ def test_a_rule_is_loaded_natively_if_an_attachment_of_the_transcript_names_it(t
     assert not loaded_natively(path, tmp_path / ".claude/rules/docs.md")
     assert not loaded_natively(write_transcript(path, [user(f"read {rule}")]), rule), "a mention is no load"
     assert not loaded_natively(tmp_path / "no_such.jsonl", rule)
+    summary = {"type": "system", "subtype": "compact_boundary"}
+    assert not loaded_natively(write_transcript(path, [attachment, summary]), rule), "a summary drops it"
+    assert loaded_natively(write_transcript(path, [attachment, summary, attachment]), rule)

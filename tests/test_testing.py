@@ -50,7 +50,7 @@ def test_evaluate_fails_like_a_run() -> None:
 def test_the_public_names_are_exactly_all() -> None:
     import strom.testing
 
-    public = {name for name, value in vars(strom.testing).items() if not name.startswith("_")}
+    public = {name for name in vars(strom.testing) if not name.startswith("_")}
     public -= {name for name in public if getattr(vars(strom.testing)[name], "__module__", "") != "strom.testing"}
     assert public == set(strom.testing.__all__)
 
@@ -167,5 +167,5 @@ async def test_check_backend_names_a_broken_rule() -> None:
 
 
 async def test_check_streaming_backend_names_a_broken_rule() -> None:
-    with pytest.raises(AssertionError, match="^backend contract: a call on another worker"):
+    with pytest.raises(AssertionError, match=r"^backend contract: a call on another worker"):
         await check_streaming_backend(lambda: Misrouting(2))
