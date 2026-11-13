@@ -126,8 +126,8 @@ type Countdown = tuple[int, int]
 
 
 def with_depth(item: int) -> list[Countdown]:
-    # at most one feedback: generated stages fan out up to about 81 outputs (nested `product`), and each
-    # feedback multiplies that (two took minutes per example)
+    # at most one feedback: each one applies the stage again and multiplies its outputs (`strategies.MAX_OUTPUTS`;
+    # two took minutes per example)
     return [(item, abs(item) % 2)]
 
 
@@ -466,6 +466,12 @@ async def outputs_of[I, O](
         return [out async for out in outputs]
 
 
+RUN_LIMIT_TIME = 5.0
+"""Seconds that a run of a sync test may take (`_run_alone`): a stalled run then fails its Hypothesis example, which
+shrinks to a minimal pipeline, instead of hanging until pytest-timeout ends the process. Each shrink of a stall waits
+this long: far below that timeout (`docs/decisions/test-settings.md`)."""
+
+
 def _run_alone[I, O](
     stage: P.Stage[I, O],
     inputs: Iterable[I],
@@ -473,11 +479,14 @@ def _run_alone[I, O](
     cpu_backend: P.CpuBackendKind,
     recorder: Recorder | None = None,
 ) -> list[O]:
-    """A run in an event loop of its own, with temporary pools; they are closed (all their tasks finished)
-    on return. For sync tests, e.g. the Hypothesis tests."""
+    """A run in an event loop of its own, with temporary pools, within `RUN_LIMIT_TIME`; the pools are closed (all
+    their tasks finished) on return. For sync tests, e.g. the Hypothesis tests."""
 
     async def run() -> list[O]:
-        async with P.Pools.open(cpu_workers=2, io_workers=io_workers, cpu_backend=cpu_backend) as pools:
+        async with (
+            asyncio.timeout(RUN_LIMIT_TIME),
+            P.Pools.open(cpu_workers=2, io_workers=io_workers, cpu_backend=cpu_backend) as pools,
+        ):
             return await outputs_of(stage, inputs, pools, recorder=recorder)
 
     return asyncio.run(run())

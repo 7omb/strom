@@ -84,14 +84,6 @@ Remove a task once it is done; decisions it led to go to `docs/decisions/`.
   revealed types, words messages differently and has no `--disallow-any-expr` equivalent that we know of.
 - [ ] Open: make real-time metrics tests robust for CI machines? Are the profiles' `max_examples` (`tests/conftest.py`)
   the right trade-off?
-- [ ] The law tests of `tests/stages/test_combinators.py` sometimes generate an example whose fan-out multiplies: nested
-  `product`s and loops of the 1:3 leaves of `tests/strategies.py` (`helpers.with_depth` already allows one feedback
-  only), and a law such as `interchange` composes four generated stages. A test then takes 5 to 230 s instead of 2, also
-  one that only evaluates meanings (`test_gather_and_loop_laws`, 227 s; a generated stage may hold `slow_double`, 0.5 ms
-  of sleep per item), on both builds, before the design review's changes and after them alike (2026-11-11: of the 19 and
-  18 timed suite runs, interleaved, one took 39 s before and one 232 s after; 8079 seeded examples of one law evaluate
-  in the same time on both trees, 0.4 s at most). Bound the fan-out of a generated example (its 1:n leaves, or the
-  outputs per input).
 
 ## Tooling
 

@@ -39,7 +39,7 @@ dev = [
     "pytest-cov",
     "pytest-randomly>=5.1",  # tests in a random order (the seed is printed: `-p randomly --randomly-seed=N`)
     "pytest-repeat>=0.9.4",  # a suspected flake: `--count=50 -k TEST`, with `-n auto`
-    "pytest-timeout>=2.4",  # a hung test fails with every thread's stack (`timeout` below)
+    "pytest-timeout>=2.4",  # a hung test ends with every thread's stack (`timeout` below)
     "pytest-xdist",
     "tox",
 ]
@@ -56,9 +56,11 @@ addopts = ["-ra", "--strict-markers", "--strict-config"]
 xfail_strict = true
 asyncio_mode = "auto"  # pytest-asyncio: every `async def` test and fixture runs on an event loop
 asyncio_default_fixture_loop_scope = "function"
-# Seconds per test (pytest-timeout): the slowest took 3.4 s (2026-11-11), the rare fan-out of generated law examples
-# up to 232 s (docs/todo.md, Tests and benchmarks); a hang fails with every thread's stack.
-timeout = 300
+# Seconds per test (pytest-timeout), far above the slowest test; the thread method, since the signal method can't end
+# a `@given` test (docs/decisions/test-settings.md). A hang writes every thread's stack and ends the process (with
+# `-n`, xdist reports the worker as crashed and replaces it).
+timeout = 120
+timeout_method = "thread"
 filterwarnings = [
     "error",  # e.g. a coroutine never awaited, a ResourceWarning
     "ignore:cpu_backend='thread' with the GIL enabled",

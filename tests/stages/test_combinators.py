@@ -9,6 +9,7 @@ from typing import NamedTuple
 import helpers
 import pytest
 from helpers import (
+    RUN_LIMIT_TIME,
     Countdown,
     Pickling,
     Tagged,
@@ -283,8 +284,8 @@ def check_meanings(sides: LawSides) -> None:
 
 
 def check_runs(sides: LawSides, without_shared_memory: bool = False) -> None:
-    """Runs both sides in an event loop of their own (the Hypothesis tests are sync); without shared memory
-    on `PicklingBackend`s, then no worker may keep an iterator."""
+    """Runs both sides in an event loop of their own (the Hypothesis tests are sync), within `RUN_LIMIT_TIME`;
+    without shared memory on `PicklingBackend`s, then no worker may keep an iterator."""
     cpu, io = Pickling(), Pickling()
 
     async def run() -> tuple[list[object], list[object]]:
@@ -293,7 +294,7 @@ def check_runs(sides: LawSides, without_shared_memory: bool = False) -> None:
             if without_shared_memory
             else P.Pools.open(cpu_workers=2, io_workers=8, cpu_backend="thread")
         )
-        async with opened as pools:
+        async with asyncio.timeout(RUN_LIMIT_TIME), opened as pools:
             return await sides.runs(pools)
 
     left, right = asyncio.run(run())
