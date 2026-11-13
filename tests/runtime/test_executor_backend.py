@@ -57,6 +57,21 @@ async def test_a_broken_executor_is_dropped_and_replaced() -> None:
     assert executors[1]._shutdown
 
 
+async def test_a_broken_executor_without_cancel_futures_is_dropped() -> None:
+    executors: list[NoCancelFuturesExecutor] = []
+
+    def factory() -> NoCancelFuturesExecutor:
+        executors.append(NoCancelFuturesExecutor(1, initializer=failing_initializer if not executors else None))
+        return executors[-1]
+
+    backend = P.FromExecutor(factory=factory)()
+    with pytest.raises(BrokenThreadPool):  # was: TypeError from `shutdown(wait=False, cancel_futures=True)`
+        await backend.run(inc, 1)
+    assert executors[0]._shutdown
+    assert await backend.run(inc, 1) == [2]  # on a new executor
+    await backend.aclose()
+
+
 async def test_an_executor_is_created_on_first_use_and_never_after_the_close() -> None:
     created: list[ThreadPoolExecutor] = []
 

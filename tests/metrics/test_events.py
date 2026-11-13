@@ -265,6 +265,25 @@ async def test_every_task_that_ran_records_its_end() -> None:
         assert own[-1].wait_started_at == (own[-2].ended_at if len(own) > 1 else own[0].wait_started_at)
 
 
+async def test_a_put_waiting_for_downstream_counts_as_blocked() -> None:
+    async def three(item: int) -> AsyncIterator[int]:
+        for _ in range(3):
+            yield item
+
+    events: list[Event] = []
+    async with (
+        P.Pools.open(cpu_workers=1, io_workers=1) as pools,
+        P.stream(P.async_stage(three, buffer_size=1), [1], pools, recorder=events.append) as outputs,
+    ):
+        async for _ in outputs:
+            # downstream takes an output every 20 ms: the step's third put waits for the second output to be
+            # taken, at least about 20 ms (half of it as the bound: the put starts a moment after the sleep)
+            await asyncio.sleep(0.02)
+    (handled,) = [e for e in events if isinstance(e, InputHandled)]
+    assert (handled.outcome, handled.num_items_out) == ("done", 3)
+    assert 0.01 <= handled.blocked_time <= handled.ended_at - handled.started_at
+
+
 async def test_a_put_cancelled_while_waiting_counts_as_blocked() -> None:
     async def endless(item: int) -> AsyncIterator[int]:
         while True:

@@ -14,7 +14,7 @@ import shlex
 from collections.abc import Sequence
 from pathlib import PurePosixPath
 
-from strom_tools.docs_check import RuleNote, rule_notes
+from strom_tools.docs_check.rule_notes import RuleNote, rule_notes
 from strom_tools.hooks.hook_events import Session, SessionEnded, SessionStarted, ToolUsed
 from strom_tools.hooks.hook_results import CONTEXT_LIMIT, HookResult, Note
 from strom_tools.hooks.memos import Memo, forget, memo, recalled, remember

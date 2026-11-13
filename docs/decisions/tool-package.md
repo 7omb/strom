@@ -39,12 +39,12 @@ exit code 2 too (`strom_tools.hooks.hook_results`; not yet observed, `docs/todo.
 What a tool reads leniently is parsed once, at the boundary, into values (2026-11-11, review of the tools, A): a
 transcript's lines into the record classes of `strom_tools.sessions.transcripts`, the friction log's lines into
 `SessionLogged` and `RetroLogged`; outcomes are sum types with one renderer (`strom_tools.example_scripts.Outcome`,
-`strom_tools.docs_check.Problem`), closed sets enums (`Kind`, `HitKind`, `Checker`), and what a hook remembers between
-calls a `Memo` (`strom_tools.hooks.memos`: lines in a file of the state directory). Before, the readers each narrowed
-the raw dicts again, and the commands compared outcome strings. `loaded_natively` scans the raw lines: on the largest
-transcript (30 MB) parsing takes 192 ms and the scan 40 ms (minimum of 5), where the whole hook command takes about 60
-ms. The outputs of `bin/sessions.py`, `bin/check_docs.py` and `bin/rename.py` on this repository were the same before
-and after.
+`strom_tools.docs_check.doc_problems.Problem`), closed sets enums (`Kind`, `HitKind`, `Checker`), and what a hook
+remembers between calls a `Memo` (`strom_tools.hooks.memos`: lines in a file of the state directory). Before, the
+readers each narrowed the raw dicts again, and the commands compared outcome strings. `loaded_natively` scans the raw
+lines: on the largest transcript (30 MB) parsing takes 192 ms and the scan 40 ms (minimum of 5), where the whole hook
+command takes about 60 ms. The outputs of `bin/sessions.py`, `bin/check_docs.py` and `bin/rename.py` on this repository
+were the same before and after.
 
 What decides is apart from what runs and what prints (2026-11-11, review of the tools, B). A command reads its
 arguments, calls its tool and prints what it returns: the interleaved comparison yields its runs and then the rows
@@ -60,6 +60,17 @@ The hook command for a Bash event, medians of 25 interleaved runs against HEAD: 
 importing its tool at the top (defining the new dataclasses costs about a millisecond each: `docs_check` and
 `transcripts` took 6 ms each to import), then 64 and 71 ms with `docs_fixes` importing the docs check only when it runs;
 the 7 ms left are mostly `transcripts`, which `rules_loading` imports for `loaded_natively` (`docs/todo.md`).
+
+The dispatcher imports the modules of an event's handlers only for that event (2026-11-13): each table is a function
+that imports them (`strom_tools.hooks.dispatcher`; `tests/tools/hooks/test_dispatcher.py` checks in a fresh interpreter
+which modules each one loads). The hook command, medians of 25 interleaved runs against the state before: PreToolUse
+Bash 145 → 91 ms, PostToolUse of a tool without handlers (Read) 145 → 90 ms, PostToolUse Bash 146 → 142 ms.
+
+The docs check is a sub-package, so that the hook after every Bash call reads the rules files without git (2026-11-13):
+`doc_lines` (a doc's lines and their parts), `rule_notes` (the rules files), `doc_problems` (the check, with
+`git_files`). `rules_loading` imports only `rule_notes` (`tests/tools/hooks/test_rules_loading.py` checks that it loads
+no `git_files`). PostToolUse Bash 142 → 112 ms (medians of 25 interleaved runs against the state before), the other
+events unchanged; importing `git_files` with `subprocess` and `tempfile` took 20–25 ms of it.
 
 A module of the tools holds one concept, as in the library (2026-11-11, review of the tools, C): the snapshot store
 apart from the line diffs (`strom_tools.change_checks.snapshots`, the commands' part in
@@ -103,4 +114,5 @@ Tools; a command's docstring holds its usage and what its output says, the mecha
 - the hooks' memos as JSON, or beside `state_dir` in `workspace` (what they hold is lines; only the hooks use them)
 - the result of a process as bytes, for `git archive` (every other caller wanted text: the archive goes into a file)
 - the dispatcher's tables naming handlers by strings, to import only the modules of an event (the names lose their
-  types; one lazy import in `docs_fixes` took the most of the cost)
+  types; a table as a function that imports its modules keeps them)
+- a lazy import of the docs check inside `docs_fixes` (only the Stop imports the module, and the check runs there)

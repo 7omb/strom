@@ -1,21 +1,18 @@
 import pytest
 from tool_helpers import commit, write
 
-from strom_tools.docs_check import (
+from strom_tools.docs_check.doc_problems import (
     _MISSING,
     NOTE_LIMIT,
     SESSION_DOC_LIMIT,
     UNTRACKED,
     LongLine,
     MissingCitation,
-    RuleNote,
     UntrackedCitation,
     _citation,
-    _Context,
     _DottedName,
     _file_set,
     _GlobCitation,
-    _lines,
     _listed,
     _PathCitation,
     _top_level_names,
@@ -23,7 +20,6 @@ from strom_tools.docs_check import (
     known,
     problems,
     rendered,
-    rule_notes,
 )
 from strom_tools.workspace.repository import Repository
 
@@ -148,20 +144,6 @@ def test_long_lines_are_problems_except_front_matter_urls_and_wide_tables(docume
     assert check(documented, f"| {long} |\n", "docs/research/tables.md") == []
 
 
-def test_rule_notes_are_the_rules_files_with_their_paths_and_body(documented: Repository) -> None:
-    write(
-        documented,
-        ".claude/rules/tests.md",
-        '---\npaths:\n  - "tests/**"\n  - docs/*.md\n---\n\n# Tests\n\nNo sleeps.\n',
-    )
-    write(documented, ".claude/rules/notes.md", "# Notes\n\n---\n\nNo front matter.\n")
-    directory = documented.root / ".claude/rules"
-    assert rule_notes(documented) == [
-        RuleNote(directory / "notes.md", [], "# Notes\n\n---\n\nNo front matter."),
-        RuleNote(directory / "tests.md", ["tests/**", "docs/*.md"], "# Tests\n\nNo sleeps."),
-    ]
-
-
 def test_a_rules_file_needs_paths_that_match_tracked_files(documented: Repository) -> None:
     scoped = '---\npaths:\n  - "tests/**"\n  - "bin/new.py"\n  - "gone/**"\n---\n\n# Tests\n'
     assert check(documented, scoped, ".claude/rules/tests.md") == [
@@ -209,18 +191,6 @@ def test_a_reference_cites_a_dotted_name_a_path_a_glob_or_nothing(documented: Re
     assert _citation("tests/**", root) == _GlobCitation("tests/**")
     for nothing in ("make check", "tracked_a/b/c", "<topic>.md", "a / b", "Shards.open(cpu_workers=2)"):
         assert _citation(nothing, root) is None, nothing
-
-
-def test_each_line_has_its_context() -> None:
-    text = "---\ntitle: x\n---\n# A\n```\n`in code`\n```\n**Rejected**\n- old\n## B\ntext\n"
-    assert [line.context for line in _lines(text)] == [
-        *[_Context.FRONT_MATTER] * 3,
-        _Context.PROSE,
-        *[_Context.CODE] * 3,
-        *[_Context.REJECTED] * 2,
-        *[_Context.PROSE] * 2,
-    ]
-    assert [line.context for line in _lines("text\n---\n")] == [_Context.PROSE] * 2, "front matter only at the top"
 
 
 def test_the_docs_are_the_markdown_files_git_sees(documented: Repository) -> None:

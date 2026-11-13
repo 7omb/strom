@@ -1,9 +1,10 @@
 import io
 import json
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import pytest
-from tool_helpers import make_calls, with_makefile, write
+from tool_helpers import imported_after, make_calls, with_makefile, write
 
 from strom_tools.hooks import dispatcher
 from strom_tools.hooks.hook_events import Session, SessionEnded, SessionStarted, ToolRequested, ToolUsed, TurnEnded
@@ -13,14 +14,45 @@ from strom_tools.workspace.repository import Repository
 SESSION = Session("abcd", None)
 
 
+def modules(handlers: Sequence[Callable[..., object]]) -> list[str]:
+    return [handler.__module__.rsplit(".", 1)[1] for handler in handlers]
+
+
 def test_every_event_has_its_handlers() -> None:
-    assert set(dispatcher._BEFORE_TOOL) == {"Bash"}
-    assert set(dispatcher._AFTER_TOOL) == {"Edit", "MultiEdit", "Write", "Bash"}
-    named = [handler.__module__.rsplit(".", 1)[1] for handler in dispatcher._AT_STOP]
-    assert named == ["python_fixes", "docs_fixes", "friction_notes"]
-    started = [handler.__module__.rsplit(".", 1)[1] for handler in dispatcher._AT_START]
-    assert started == ["friction_notes", "rules_loading", "context_notes"]
-    assert len(dispatcher._AT_END) == 2
+    assert modules(dispatcher._before_tool("Bash")) == ["command_guards"]
+    assert [modules(dispatcher._after_tool(tool)) for tool in ["Edit", "MultiEdit", "Write", "Bash"]] == [
+        ["python_fixes"],
+        ["python_fixes"],
+        ["python_fixes"],
+        ["rules_loading"],
+    ]
+    assert (dispatcher._before_tool("Edit"), dispatcher._after_tool("Read")) == ([], [])
+    assert modules(dispatcher._at_stop()) == ["python_fixes", "docs_fixes", "friction_notes"]
+    assert modules(dispatcher._at_start()) == ["friction_notes", "rules_loading", "context_notes"]
+    assert modules(dispatcher._at_end()) == ["friction_notes", "rules_loading"]
+
+
+HANDLER_MODULES = {"command_guards", "context_notes", "docs_fixes", "friction_notes", "python_fixes", "rules_loading"}
+
+
+@pytest.mark.parametrize(
+    ("table", "expected"),
+    [
+        ("", set[str]()),
+        ("_before_tool('Bash')", {"command_guards"}),
+        ("_before_tool('Edit')", set[str]()),
+        ("_after_tool('Write')", {"python_fixes"}),
+        ("_after_tool('Bash')", {"rules_loading"}),
+        ("_after_tool('Read')", set[str]()),
+        ("_at_stop()", {"python_fixes", "docs_fixes", "friction_notes"}),
+        ("_at_start()", {"friction_notes", "rules_loading", "context_notes"}),
+        ("_at_end()", {"friction_notes", "rules_loading"}),
+    ],
+)
+def test_an_event_imports_only_the_modules_of_its_handlers(table: str, expected: set[str]) -> None:
+    """The dispatcher imports no handler's module, and a table only those of its handlers."""
+    imported = imported_after("from strom_tools.hooks import dispatcher", *([f"dispatcher.{table}"] if table else []))
+    assert {name.removeprefix("strom_tools.hooks.") for name in imported} & HANDLER_MODULES == expected
 
 
 def test_the_results_are_those_of_the_handlers_of_the_event(repository: Repository) -> None:
@@ -49,7 +81,7 @@ def test_a_handler_that_raises_is_reported_and_the_others_still_run(
     def working(repository: Repository, event: SessionStarted) -> HookResult:
         return Note(for_user=f"started by {event.source}")
 
-    monkeypatch.setattr(dispatcher, "_AT_START", [broken, working])
+    monkeypatch.setattr(dispatcher, "_at_start", lambda: [broken, working])
     failed, noted = dispatcher._results(repository, SessionStarted(SESSION, "startup"))
     assert isinstance(failed, Failed)
     assert failed.message.startswith(f"hook {__name__}.broken failed:\nTraceback")

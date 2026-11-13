@@ -1,11 +1,11 @@
 """The tests against a copy of the code with an injected bug: whether they catch it.
 
-The library (`src/` of the working tree), the tools (`_MUTABLE`), the tests and `pyproject.toml` are copied into a
-directory, and pytest runs there, with the copy of the library first on PYTHONPATH (`library_copy` checks that
-`import strom` finds it) and in its own process group (injected bugs often hang, a join waiting forever, so a
-timeout kills the whole group, pool workers included). The same tests run on the copy without the bug first: they
-must pass there, so that a failure means the bug was caught (not a test that fails anyway, nor a missing pytest).
-Nothing in the repository changes, also not its caches or Hypothesis database."""
+The library (`src/` of the working tree), the tools and the files of the root that tests read (`_MUTABLE`), the tests
+and `pyproject.toml` are copied into a directory, and pytest runs there, with the copy of the library first on
+PYTHONPATH (`library_copy` checks that `import strom` finds it) and in its own process group (injected bugs often
+hang, a join waiting forever, so a timeout kills the whole group, pool workers included). The same tests run on the
+copy without the bug first: they must pass there, so that a failure means the bug was caught (not a test that fails
+anyway, nor a missing pytest). Nothing in the repository changes, also not its caches or Hypothesis database."""
 
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -18,8 +18,9 @@ from strom_tools.workspace import git_files
 from strom_tools.workspace.processes import ProcessRun, pytest_command, run_process
 from strom_tools.workspace.repository import Repository
 
-_MUTABLE = ["tools", "bin", ".claude/hooks"]
-"""What the copy holds of the working tree besides the library: the tools, with the wrappers their tests read."""
+_MUTABLE = ["tools", "bin", ".claude/hooks", "README.md", "Makefile"]
+"""What the copy holds of the working tree besides the library: the tools, with the wrappers their tests read, and
+the files of the root that tests read (the example of `README.md`, the targets of `make check`)."""
 _DEFAULT_PYTEST_ARGS = ["-x", "-q"]
 
 

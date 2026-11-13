@@ -18,12 +18,14 @@ run its targets (`make fix`, `make lint-python`, `make lint-docs`), as the git h
                                        `rules_loading.at_end`: forget what it loaded in the session
 
 A handler takes the repository and its event and returns a `HookResult` (`hook_results`). Every handler of an
-event runs; one that raises is reported and never blocks."""
+event runs; one that raises is reported and never blocks.
+
+The hook command runs at every tool call, so a table is a function that imports the modules of its handlers: an
+event loads only its own (`docs/decisions/tool-package.md`)."""
 
 import sys
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 
-from strom_tools.hooks import command_guards, context_notes, docs_fixes, friction_notes, python_fixes, rules_loading
 from strom_tools.hooks.hook_events import (
     HookEvent,
     SessionEnded,
@@ -39,35 +41,62 @@ from strom_tools.workspace.repository import Repository, this_repository
 
 type _Handler[E] = Callable[[Repository, E], HookResult]
 
-_BEFORE_TOOL: Mapping[str, Sequence[_Handler[ToolRequested]]] = {"Bash": [command_guards.before_bash]}
-_AFTER_TOOL: Mapping[str, Sequence[_Handler[ToolUsed]]] = {
-    "Edit": [python_fixes.after_edit],
-    "MultiEdit": [python_fixes.after_edit],
-    "Write": [python_fixes.after_edit],
-    "Bash": [rules_loading.after_bash],
-}
-_AT_STOP: Sequence[_Handler[TurnEnded]] = [python_fixes.at_stop, docs_fixes.at_stop, friction_notes.at_stop]
-_AT_START: Sequence[_Handler[SessionStarted]] = [
-    friction_notes.at_start,
-    rules_loading.at_start,
-    context_notes.at_start,
-]
-_AT_END: Sequence[_Handler[SessionEnded]] = [friction_notes.at_end, rules_loading.at_end]
+
+def _before_tool(tool: str) -> Sequence[_Handler[ToolRequested]]:
+    match tool:
+        case "Bash":
+            from strom_tools.hooks import command_guards
+
+            return [command_guards.before_bash]
+        case _:
+            return []
+
+
+def _after_tool(tool: str) -> Sequence[_Handler[ToolUsed]]:
+    match tool:
+        case "Edit" | "MultiEdit" | "Write":
+            from strom_tools.hooks import python_fixes
+
+            return [python_fixes.after_edit]
+        case "Bash":
+            from strom_tools.hooks import rules_loading
+
+            return [rules_loading.after_bash]
+        case _:
+            return []
+
+
+def _at_stop() -> Sequence[_Handler[TurnEnded]]:
+    from strom_tools.hooks import docs_fixes, friction_notes, python_fixes
+
+    return [python_fixes.at_stop, docs_fixes.at_stop, friction_notes.at_stop]
+
+
+def _at_start() -> Sequence[_Handler[SessionStarted]]:
+    from strom_tools.hooks import context_notes, friction_notes, rules_loading
+
+    return [friction_notes.at_start, rules_loading.at_start, context_notes.at_start]
+
+
+def _at_end() -> Sequence[_Handler[SessionEnded]]:
+    from strom_tools.hooks import friction_notes, rules_loading
+
+    return [friction_notes.at_end, rules_loading.at_end]
 
 
 def _results(repository: Repository, event: HookEvent) -> list[HookResult | Failed]:
     """What each handler of the event returns, in the order of its table."""
     match event:
         case ToolRequested():
-            return [_run(handler, repository, event) for handler in _BEFORE_TOOL.get(event.tool, ())]
+            return [_run(handler, repository, event) for handler in _before_tool(event.tool)]
         case ToolUsed():
-            return [_run(handler, repository, event) for handler in _AFTER_TOOL.get(event.tool, ())]
+            return [_run(handler, repository, event) for handler in _after_tool(event.tool)]
         case TurnEnded():
-            return [_run(handler, repository, event) for handler in _AT_STOP]
+            return [_run(handler, repository, event) for handler in _at_stop()]
         case SessionStarted():
-            return [_run(handler, repository, event) for handler in _AT_START]
+            return [_run(handler, repository, event) for handler in _at_start()]
         case SessionEnded():
-            return [_run(handler, repository, event) for handler in _AT_END]
+            return [_run(handler, repository, event) for handler in _at_end()]
 
 
 def _run[E](handler: _Handler[E], repository: Repository, event: E) -> HookResult | Failed:

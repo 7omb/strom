@@ -9,13 +9,13 @@ Knowledge arrives by its trigger (2026-11-11). A gotcha goes, in this order, int
 the message of the tool where it happens, the docstring of what it concerns, or a note: a rules file of one topic in
 `.claude/rules/` whose `paths` name the files of that work, so that Claude Code (Read, Edit) and the rules hook (a path
 a Bash command names, `strom_tools.hooks.rules_loading`) load it only there. The docs check keeps the notes loadable:
-`paths` present, each glob matching a tracked file, the text under `strom_tools.docs_check.NOTE_LIMIT`; the hook output
-stays under Claude Code's limit (`strom_tools.hooks.hook_results.CONTEXT_LIMIT`), and the rules hook names the notes
-left out and adds them at a later command. Decisions are a file per topic in `docs/decisions/`; the listing is the
-index, a file's first sentence the decision. Measured before (sessions ac2eb2c5, 9c493011, 0837df3e): two notes of 23.5
-KB that Claude Code replaced by a 2 KB preview while the hook recorded their rules as loaded; the former note `tooling`
-with 22 entries on about ten topics loaded whole for eleven path patterns; the one decisions file (87 KB) read 20 to 65
-times per session in ranges; the index agreement in five files.
+`paths` present, each glob matching a tracked file, the text under `strom_tools.docs_check.doc_problems.NOTE_LIMIT`; the
+hook output stays under Claude Code's limit (`strom_tools.hooks.hook_results.CONTEXT_LIMIT`), and the rules hook names
+the notes left out and adds them at a later command. Decisions are a file per topic in `docs/decisions/`; the listing is
+the index, a file's first sentence the decision. Measured before (sessions ac2eb2c5, 9c493011, 0837df3e): two notes of
+23.5 KB that Claude Code replaced by a 2 KB preview while the hook recorded their rules as loaded; the former note
+`tooling` with 22 entries on about ten topics loaded whole for eleven path patterns; the one decisions file (87 KB) read
+20 to 65 times per session in ranges; the index agreement in five files.
 
 **Rejected**
 

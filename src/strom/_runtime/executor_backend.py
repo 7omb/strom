@@ -72,25 +72,26 @@ class ExecutorBackend(Backend):
         """`executor` broke: the next use creates another one."""
         if isinstance(self._state, _Running) and self._state.executor is executor:
             self._state = _EMPTY
-            executor.shutdown(wait=False, cancel_futures=True)
+            _shut_down(executor, wait=False)
 
     @override
     async def aclose(self) -> None:
         state, self._state = self._state, _CLOSED
         if isinstance(state, _Running):
-            await asyncio.to_thread(_shut_down, state.executor)
+            await asyncio.to_thread(_shut_down, state.executor, wait=True)
 
 
-def _shut_down(executor: Executor) -> None:
-    """Cancels the pool tasks of `executor` not yet started and waits for the running ones. Blocks: run it in
-    a thread.
+def _shut_down(executor: Executor, *, wait: bool) -> None:
+    """Cancels the pool tasks of `executor` not yet started and, if `wait`, waits for the running ones (blocks:
+    run it in a thread then).
 
-    An executor whose `shutdown` takes no `cancel_futures` (some of other libraries) is shut down waiting for
-    its queued tasks too: those of finished runs were cancelled with their callers already."""
+    An executor whose `shutdown` takes no `cancel_futures` (some of other libraries) is shut down without it, so
+    one that waits waits for its queued tasks too: those of finished runs were cancelled with their callers
+    already."""
     try:
-        executor.shutdown(cancel_futures=True)
+        executor.shutdown(wait=wait, cancel_futures=True)
     except TypeError:
-        executor.shutdown(wait=True)
+        executor.shutdown(wait=wait)
 
 
 # ---- its config: creates the backend when called (on first use of its `Pools`)

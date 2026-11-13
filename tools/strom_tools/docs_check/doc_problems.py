@@ -7,11 +7,12 @@ What counts as a citation and what is skipped: `strom_tools.commands.check_docs`
 import ast
 import posixpath
 import re
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from enum import Enum
 from pathlib import Path, PurePosixPath
 
+from strom_tools.docs_check.doc_lines import Context, Line, lines_of
+from strom_tools.docs_check.rule_notes import RULES, body_of, globs_of
 from strom_tools.workspace import git_files
 from strom_tools.workspace.repository import SOURCE_ROOTS, Repository, shown
 
@@ -25,11 +26,6 @@ _WIDE_TABLES = "docs/research"
 """Its tables are exempt from `_MAX_LINE` until they are restructured (`docs/todo.md`)."""
 UNTRACKED = " (untracked: `git add` it)"
 _MISSING = " (not found; if it is only planned: its name without path and extension, or with `…`)"
-_RULES = ".claude/rules"
-"""Claude Code's rules files: each loads when Claude touches a file its `paths` match (Read, Edit; for a Bash
-command `strom_tools.hooks.rules_loading`), one without `paths` in every session."""
-_GLOB_LINE = re.compile(r'\s*-\s+"?([^"\n]+?)"?\s*')
-"""A line of the `paths` list in a rules file's front matter."""
 NOTE_LIMIT = 2_500
 """The characters of a rules file's text (without the front matter): so that several fit into one hook output
 (`strom_tools.hooks.hook_results.CONTEXT_LIMIT`), and a note that outgrows it holds a second topic."""
@@ -37,32 +33,6 @@ _SESSION_DOC = "CLAUDE.md"
 SESSION_DOC_LIMIT = 8_000
 """The bytes of `CLAUDE.md`, which every session loads whole: what only some work needs goes elsewhere
 (`.claude/rules/docs.md`)."""
-
-
-@dataclass(frozen=True)
-class RuleNote:
-    """A rules file."""
-
-    path: Path
-    globs: list[str]
-    """Of its `paths` front matter; none without one."""
-    body: str
-    """Without the front matter."""
-
-
-def rule_notes(repository: Repository) -> list[RuleNote]:
-    """The rules files, in the order of their names."""
-    notes: list[RuleNote] = []
-    for path in sorted((repository.root / _RULES).glob("*.md")):
-        text = path.read_text(encoding="utf-8")
-        lines = list(_lines(text))
-        notes.append(RuleNote(path, [glob for _, glob in _globs(lines)], _body(lines)))
-    return notes
-
-
-def _body(lines: Iterable[_Line]) -> str:
-    """The text of a rules file without its front matter."""
-    return "\n".join(line.text for line in lines if line.context is not _Context.FRONT_MATTER).strip()
 
 
 @dataclass(frozen=True)
@@ -200,11 +170,11 @@ def problems(doc: Path, known: Known) -> list[Problem]:
     root = known.repository.root
     name = shown(known.repository, doc)
     text = doc.read_text(encoding="utf-8")
-    lines = list(_lines(text))
+    lines = list(lines_of(text))
     long_lines = _long_lines(name, lines, wide_tables=doc.is_relative_to(root / _WIDE_TABLES))
     directory = doc.parent.relative_to(root).as_posix() if doc.is_relative_to(root) else None
     cited = _uncited(name, lines, directory, known)
-    notes = _note_problems(name, lines, known) if directory == _RULES and doc.suffix == ".md" else []
+    notes = _note_problems(name, lines, known) if directory == RULES and doc.suffix == ".md" else []
     size = len(text.encode())
     session = [LongSessionDoc(name, size)] if doc == root / _SESSION_DOC and size > SESSION_DOC_LIMIT else []
     return sorted([*session, *notes, *long_lines, *cited], key=_line_of)  # stable: a long line before what it cites
@@ -215,11 +185,11 @@ def _line_of(problem: Problem) -> int:
 
 
 def _note_problems(
-    doc: str, lines: Sequence[_Line], known: Known
+    doc: str, lines: Sequence[Line], known: Known
 ) -> list[UnscopedNote | DeadGlob | UntrackedCitation | LongNote]:
     """The problems of a rules file: its `paths` (none, or globs that match no tracked file: untracked if they
     match a file a `git add` would track) and its size."""
-    globs = _globs(lines)
+    globs = globs_of(lines)
     if not globs:
         return [UnscopedNote(doc, 1)]
     tracked = [PurePosixPath(name) for name in known.tracked.files]
@@ -231,83 +201,34 @@ def _note_problems(
         for number, glob in globs
         if not any(file.full_match(glob) for file in tracked)
     ]
-    body = _body(lines)
+    body = body_of(lines)
     if len(body) <= NOTE_LIMIT:
         return dead
-    start = next(line.number for line in lines if line.context is not _Context.FRONT_MATTER and line.text.strip())
+    start = next(line.number for line in lines if line.context is not Context.FRONT_MATTER and line.text.strip())
     return [*dead, LongNote(doc, start, len(body))]
 
 
-class _Context(Enum):
-    """What part of a doc a line is in."""
-
-    FRONT_MATTER = "front matter"
-    CODE = "code"
-    """A code block, with its fences."""
-    REJECTED = "rejected"
-    """The list under **Rejected**, up to the next heading: the alternatives cite old names on purpose."""
-    PROSE = "prose"
-
-
-@dataclass(frozen=True)
-class _Line:
-    number: int
-    text: str
-    context: _Context
-
-
-def _lines(text: str) -> Iterator[_Line]:
-    """The lines of a doc, each with its context."""
-    lines = text.splitlines()
-    in_front_matter = bool(lines) and lines[0] == "---"
-    in_code_block = in_rejected = False
-    for number, line in enumerate(lines, start=1):
-        if in_front_matter:
-            in_front_matter = number == 1 or line != "---"
-            yield _Line(number, line, _Context.FRONT_MATTER)
-            continue
-        if line.lstrip().startswith("```"):
-            in_code_block = not in_code_block
-            yield _Line(number, line, _Context.CODE)
-            continue
-        if line.startswith("#"):
-            in_rejected = False
-        elif line.startswith("**Rejected**"):
-            in_rejected = True
-        context = _Context.CODE if in_code_block else _Context.REJECTED if in_rejected else _Context.PROSE
-        yield _Line(number, line, context)
-
-
-def _long_lines(doc: str, lines: Iterable[_Line], *, wide_tables: bool) -> list[LongLine]:
+def _long_lines(doc: str, lines: Iterable[Line], *, wide_tables: bool) -> list[LongLine]:
     """The lines over `_MAX_LINE` but those of the front matter, those with a URL and, with `wide_tables`, table
     rows."""
     return [
         LongLine(doc, line.number, len(line.text))
         for line in lines
         if len(line.text) > _MAX_LINE
-        and line.context is not _Context.FRONT_MATTER
+        and line.context is not Context.FRONT_MATTER
         and "://" not in line.text
         and not (wide_tables and line.text.startswith("|"))
     ]
 
 
-def _globs(lines: Iterable[_Line]) -> list[tuple[int, str]]:
-    """The globs of a rules file's `paths`, each with its line number."""
-    return [
-        (line.number, match.expand(r"\1"))
-        for line in lines
-        if line.context is _Context.FRONT_MATTER and (match := _GLOB_LINE.fullmatch(line.text)) is not None
-    ]
-
-
 def _uncited(
-    doc: str, lines: Iterable[_Line], directory: str | None, known: Known
+    doc: str, lines: Iterable[Line], directory: str | None, known: Known
 ) -> list[MissingCitation | UntrackedCitation]:
     """The references in backticks in the prose that cite what is not tracked, for a doc in `directory` (its path
     from the root; None: a doc outside the repository)."""
     found: list[MissingCitation | UntrackedCitation] = []
     for line in lines:
-        if line.context is not _Context.PROSE:
+        if line.context is not Context.PROSE:
             continue
         for match in _SPAN.finditer(line.text):
             span: str = match.group(1)

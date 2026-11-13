@@ -14,6 +14,7 @@ check pass. If nothing else is wrong, they go to the user as a note, once per se
 import re
 from collections.abc import Sequence
 
+from strom_tools.docs_check.doc_problems import UNTRACKED
 from strom_tools.hooks.hook_events import TurnEnded
 from strom_tools.hooks.hook_results import Block, HookResult, Note
 from strom_tools.hooks.memos import Memo, forget, memo, recalled, remember, remembered_at
@@ -67,9 +68,6 @@ def _verdict(unformatted: str, checked: str, told: Sequence[str]) -> tuple[HookR
     A problem other than an untracked citation blocks, with all of them. Else the untracked citations go to the
     user as a note, unless they are those of the last time; none of them: nothing to say, and the next ones are
     new."""
-    # here: the hook command imports every handler's module at every tool call, and the docs check's is slow
-    from strom_tools.docs_check import UNTRACKED
-
     untracked = [line for line in checked.splitlines() if line.endswith(UNTRACKED)]
     others = [line for line in checked.splitlines() if line not in untracked and not _MAKES_OWN_LINE.match(line)]
     if unformatted or others:

@@ -93,6 +93,19 @@ def test_a_bug_is_tried_in_a_copy(doubling: Repository, tmp_path: Path, bug: Bug
     assert not (doubling.root / ".pytest_cache").exists()
 
 
+@pytest.mark.parametrize("name", ["README.md", "Makefile"])
+def test_the_copy_holds_the_files_of_the_root_that_tests_read(doubling: Repository, tmp_path: Path, name: str) -> None:
+    """The example of `README.md`, the targets of `make check`: without them, the tests fail without the bug."""
+    write(doubling, name, "read by a test\n")
+    write(
+        doubling,
+        "tests/test_root.py",
+        f"from pathlib import Path\n\n\ndef test_root():\n    Path({name!r}).read_text()\n",
+    )
+    bug = Replace("src/strom/__init__.py", "2 * x", "3 * x")
+    assert verdict(try_bug(doubling, bug, WorkingTree(), ["-q"], 120, tmp_path / "copy")) == Verdict.CAUGHT
+
+
 @pytest.mark.parametrize("args", [["-x", "-n", "4"], ["-q", "--exitfirst", "-nauto"], ["-x", "--numprocesses=2"]])
 def test_exitfirst_with_xdist_is_refused(doubling: Repository, tmp_path: Path, args: list[str]) -> None:
     bug = Replace("src/strom/__init__.py", "2 * x", "3 * x")

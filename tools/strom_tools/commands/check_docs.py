@@ -13,7 +13,8 @@ cites
     (`_metrics/events.py`) may end a tracked path, an ignored path (`.checks/…`: generated) need not exist;
     a glob (`tests/**`) must match something tracked; `:LINE` and `::TEST` suffixes name the file,
   - a module or name of the library or the tools (`strom.testing`, `strom._stages.model.Step`,
-    `strom_tools.docs_check`): the module is tracked and defines the first name after it at its top level.
+    `strom_tools.docs_check.doc_problems`): the module is tracked and defines the first name after it at its top
+    level.
 Tracked, not merely there: a clone has only what is tracked, so a doc that cites a new file fails here until
 the file is added (`git add`); such a reference is printed with that hint.
 Spans with placeholders (`<topic>`, `...`, `…`), spaces, URLs, absolute or home paths (`/proc/…`, `~/`) are
@@ -24,15 +25,15 @@ as `FILE:LINE: REF` with a hint, each long line as `FILE:LINE: N characters`; th
 any.
 A rules file of Claude Code (`.claude/rules/*.md`) needs `paths` in its front matter (Claude Code loads one
 without them in every session), each of its globs must match a tracked file, and its text (without the front
-matter) stays under `strom_tools.docs_check.NOTE_LIMIT`: several notes fit into one hook output, and a longer
-one holds two topics.
+matter) stays under `strom_tools.docs_check.doc_problems.NOTE_LIMIT`: several notes fit into one hook output,
+and a longer one holds two topics.
 """
 
 from collections.abc import Sequence
 from pathlib import Path
 
 from strom_tools.commands import command_line
-from strom_tools.docs_check import docs, known, problems, rendered
+from strom_tools.docs_check.doc_problems import docs, known, problems, rendered
 from strom_tools.workspace.repository import this_repository
 
 

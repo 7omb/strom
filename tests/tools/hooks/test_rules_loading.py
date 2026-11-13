@@ -1,9 +1,9 @@
 from pathlib import Path, PurePosixPath
 
 import pytest
-from tool_helpers import write, write_transcript
+from tool_helpers import imported_after, write, write_transcript
 
-from strom_tools.docs_check import RuleNote
+from strom_tools.docs_check.rule_notes import RuleNote
 from strom_tools.hooks.hook_events import Session, SessionEnded, SessionStarted, ToolUsed
 from strom_tools.hooks.hook_results import CONTEXT_LIMIT, Note
 from strom_tools.hooks.memos import recalled, remembered_at
@@ -31,6 +31,12 @@ SESSION = Session("abcd", None)
 
 def bash(command: str, session: Session = SESSION) -> ToolUsed:
     return ToolUsed(session, "Bash", None, command)
+
+
+def test_the_handlers_import_no_git() -> None:
+    """They run after every Bash call; reading the rules files needs no git, and `git_files` with what it imports
+    (`subprocess`, `tempfile`) took about half the time of importing this module."""
+    assert "strom_tools.workspace.git_files" not in imported_after("import strom_tools.hooks.rules_loading")
 
 
 def test_the_rules_to_add_match_a_touched_path_and_were_not_added_before() -> None:

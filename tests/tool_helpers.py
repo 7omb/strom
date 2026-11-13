@@ -2,7 +2,9 @@
 record their calls, transcripts."""
 
 import json
+import os
 import subprocess
+import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import ModuleType
@@ -92,3 +94,15 @@ def run_command(
 def write_transcript(path: Path, records: Sequence[object]) -> Path:
     path.write_text("".join(f"{json.dumps(record)}\n" for record in records), encoding="utf-8")
     return path
+
+
+TOOLS = Path(__file__).resolve().parents[1] / "tools"
+
+
+def imported_after(*statements: str) -> set[str]:
+    """The modules a fresh interpreter has imported after `statements`, as the hook command's is: the hook
+    command runs at every tool call, and an import costs milliseconds (`python3 -X importtime`)."""
+    script = [*statements, "import sys", "print(*sys.modules)"]
+    env = {**os.environ, "PYTHONPATH": str(TOOLS)}
+    run = subprocess.run([sys.executable, "-c", "\n".join(script)], capture_output=True, text=True, env=env, check=True)
+    return set(run.stdout.split())

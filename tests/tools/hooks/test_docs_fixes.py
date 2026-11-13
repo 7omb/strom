@@ -2,7 +2,7 @@ import os
 
 from tool_helpers import make_calls, with_makefile, write
 
-from strom_tools.docs_check import UNTRACKED
+from strom_tools.docs_check.doc_problems import UNTRACKED
 from strom_tools.hooks.docs_fixes import _formatted, _verdict, at_stop
 from strom_tools.hooks.hook_events import Session, TurnEnded
 from strom_tools.hooks.hook_results import Block, Note
