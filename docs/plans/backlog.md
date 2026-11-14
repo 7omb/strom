@@ -17,35 +17,10 @@ Status 2026-11-13: every item checked against the code of that day.
 
 ## Next steps
 
-1. B2 (the plan exists; its names still match the code).
-2. The measurements B5–B8 as one batch.
-3. The user decides about the features (P4) and the questions under "Open questions".
-
-## P1: correctness and the largest known costs
-
-- **B2. Event-loop steps handle each input through an async generator.** About 1.6 µs per input; runs on many inputs
-  about 2x slower than when one input makes the items (`docs/decisions/runner-costs.md`). Plan:
-  `docs/plans/event_loop_step_cost.md` (its names checked 2026-11-13: `_run_step_tasks`, `_fair`, `_SKIP_BUDGET`,
-  `item_fn_of`, the closing and fairness tests exist as it says).
+1. The user decides the features (P4) and the questions under "Open questions".
 
 ## P2: measurements and small performance steps
 
-- **B5. Interpreters for "cpu".** `FromExecutor(factory=InterpreterPoolExecutor)` runs a `cpu_stage` and passes
-  `check_backend` (probe 2026-11-13, Python 3.14, two interpreters, the function from an importable module): add that as
-  a test. Then decide whether an `Interpreters(workers=)` config is worth a public name (**API**).
-- **B6. `gc.freeze()` in a worker process.** Process workers started about 0.9 ms faster with the forkserver's objects
-  frozen (`gc.freeze()` at import of the main module, 2026-11-09, 25 lifecycles × 3 of `ProcessBackend` run and close):
-  a collection during a worker's start-up scans and copies the inherited pages. Try it first thing in `serve`
-  (`strom._runtime.process_backend`) and measure the same way.
-- **B7. Default `buffer_size` of steps that wait.** `DEFAULT_BUFFER_SIZE` (`strom._stages.model`) was measured for
-  `stage`, not for `io_stage`, `cpu_stage` and `async_stage`: measure those with a few sizes.
-- **B8. The cost of a thread-pool io task.** Compare `test_thread_pool_io_stage` with
-  `test_thread_pool_reference_asyncio_offload_by_workers` (`benchmarks/benchmark.py`) and profile the difference. The
-  earlier comparisons with offloading onto executors cannot be repeated (that state is gone); the built-in backends run
-  on a pool of their own since 2026-11-11 (`docs/decisions/worker-pool.md`).
-- **B9. One future per pool task.** `ThreadBackend.run` and `ProcessBackend` wrap the `concurrent.futures.Future` of
-  `strom._runtime.pinning_pool` with `asyncio.wrap_future`: complete the asyncio future directly from the pool thread
-  (fewer objects per task; cancellation and a closed loop handled there). After B8, which shows whether it matters.
 - **B10. Batched pool tasks.** A process-pool `executor.map` with chunks of 100 instead of 1 cost 1.8 instead of 117 µs
   per item. Several inputs of a `cpu_stage` per pool task changes how concurrency and metrics count tasks. **Plan**;
   worth it when process-pool throughput on cheap functions matters.
@@ -61,6 +36,14 @@ Status 2026-11-13: every item checked against the code of that day.
 - **B13. External executors.** `FromExecutor` with Dask's `client.get_executor`, loky and mpi4py is untested against the
   real libraries: run `check_backend` with each (`uv run --frozen --with PKG`); a broken one is replaced like a
   `ThreadPoolExecutor`, also without `cancel_futures` (`tests/runtime/test_executor_backend.py`).
+- **B31. A cancelled pool task under a caller nobody cancelled.** A backend that cancels its queued pool tasks when it
+  closes (`FromExecutor` through `cancel_futures`, a backend of a user's) raises `CancelledError` in a step task that
+  still waits; its `TaskGroup` takes that for a child that ended, so a run that outlives its pools ends without an error
+  and with some of its outputs (a probe, 2026-11-13). The built-in thread and process backends raise `RuntimeError`
+  there (`docs/decisions/worker-pool.md`). For every backend: `_OnBackends.cpu` and `_OnBackends.io`
+  (`strom._interpreters.offloaders`) raise `RuntimeError` for a `CancelledError` of a pool task while
+  `asyncio.current_task().cancelling()` is 0. With it, what the contract promises: `Backend.aclose` and the user guide
+  say "cancels" for the pool tasks a close finds queued.
 
 ## P4: features (each **API**)
 

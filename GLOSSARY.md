@@ -90,9 +90,12 @@ term per concept; definitions only.
 - **pool task**: one call submitted to a pool. **pool worker**: a thread, process or remote worker of a pool. **pool
   thread**: a pool worker that is a thread; used where only threads apply.
 - **pinning pool** (`PinningPool`): the threads behind the built-in thread and process backends: a call runs on any of
-  them or on the one it is **pinned** to, behind what that one runs. A **cleanup** is a call pinned to every thread and
-  never cancelled (the release of a scope, the close of a worker handle). A thread's **worker** (`Worker`) is what it
-  runs its calls with: itself, or a child process it forwards them to.
+  them (**unpinned**) or on the one it is **pinned** to, behind what that one runs. Its result or error goes to its
+  caller's event loop; one nobody waits for any more is **discarded**. The shutdown **drops** the calls still queued:
+  they never run. A **cleanup** is a call pinned to every thread and never dropped (the release of a scope, the close of
+  a worker handle). A thread's **worker** (`Worker`) is what it runs its calls with: itself, or a child process it
+  forwards them to. A thread whose worker holds what later pinned calls will need (an open iterator) is **stateful**,
+  else **stateless**: an unpinned call prefers an idle stateless one.
 - **offload**: run a blocking function as a pool task.
 - **pool-worker-side helpers**: functions that run in a pool worker around the user's function.
 - **worker id** (`WorkerId`): a pool worker, the target of affinity; it holds iterators in its **registry**

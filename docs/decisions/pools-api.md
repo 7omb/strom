@@ -37,6 +37,12 @@ the contract (picklable for other processes and hosts). `Threads` threads are na
 - in its place `Pools.on` (says less than `open_on`: not that it is the block of `open`)
 - in its place `Pools.backed_by` (the glossary's word, but it reads as a property of pools that exist)
 - in its place `Pools.with_backends` (`async with Pools.with_…` stutters)
+- an `Interpreters(workers=)` config for "cpu" (2026-11-13; `FromExecutor(factory=InterpreterPoolExecutor)` runs one):
+  interpreters pay off only for CPU-bound work with the GIL, where `Processes` does about as well and starts 40x faster;
+  free-threaded, `Threads` does it without either cost. 4 workers, medians with the GIL / free-threaded: first call of
+  fresh pools 134 / 167 ms (`Processes` 3.4 / 9.3, `Threads` 0.3 / 0.4); a cheap function 160 / 404 µs per item
+  (`Processes` 149 / 52, `Threads` 55 / 43); CPU-bound items 327 / 346 per second (`Processes` 298 / 261, `Threads` 56 /
+  270\)
 - backends as records of functions, or as Protocols in place of the two classes (`Run`, `PlacedRun`, `release`,
   `aclose`: `docs/research/backends.md`, approach 4, and `docs/research/dependency_injection.md`, D3): four public names
   for two, and an implementer's class would lose the `@override` check against a base and the default of `close_handle`

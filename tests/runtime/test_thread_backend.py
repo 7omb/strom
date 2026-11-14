@@ -40,7 +40,7 @@ def wait_until_idle(backend: ThreadBackend) -> None:
     of its call is out). Polls every half millisecond (intentional: the pool has no signal for it)."""
     pool = backend._pool
     deadline = time.monotonic() + WAIT_LIMIT_TIME
-    while len(pool._idle_free) + len(pool._idle_holding) != len(pool._threads):
+    while len(pool._idle_stateless) + len(pool._idle_stateful) != len(pool._threads):
         assert time.monotonic() < deadline, "the threads did not go idle"
         time.sleep(0.0005)
 

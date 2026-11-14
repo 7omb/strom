@@ -15,6 +15,10 @@ class WorkerId:
     token: str
 
 
+BACKEND_CLOSED = "the backend is closed (its Pools is closed)"
+"""The message of the `RuntimeError` that the built-in backends raise for a use after `Backend.aclose`."""
+
+
 class Backend(ABC):
     """Runs the pool tasks of one resource: created when a `Pools` first needs it, used within one event loop,
     closed once by `aclose`.

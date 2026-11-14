@@ -142,11 +142,11 @@ What the code doesn't show at a glance. The decisions in `docs/decisions/` refer
   (`PoolCalls`, `_Measured`). A registry holds its iterators strongly, so a missed release would leak: a pool thread
   checks at its end that its registry is empty (the close of the pools fails otherwise), a test fixture the registry of
   the process.
-- The built-in workers are addressable (`PinningPool`): a pool thread takes the calls pinned to it and the shared ones
+- The built-in workers are addressable (`PinningPool`): a pool thread takes the calls pinned to it and the unpinned ones
   in the order they arrived, so "on that worker, after what it runs now" is an ordinary call: every later call of an
   `io_stage` iterator (`affinity`), the release of a scope and the close of a worker handle (cleanups, pinned to every
-  thread and never cancelled). A process worker is such a thread forwarding its calls to a child process of its own over
-  a pipe; the calls wait in this process, and a crash breaks one worker.
+  thread and never dropped: the shutdown runs those still queued). A process worker is such a thread forwarding its
+  calls to a child process of its own over a pipe; the calls wait in this process, and a crash breaks one worker.
 - Worker handles add no leaf: `using` returns an ordinary function (`Using`), so fusion, lifting, both interpreters and
   the offloader run it unchanged; only the backends know handles (`init_handles`, `Backend.close_handle`). Setup: the
   thread mark `init_handles` (a pool thread of `Threads`, the main thread of a worker process); teardown at the block's

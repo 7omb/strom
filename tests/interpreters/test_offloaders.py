@@ -163,7 +163,7 @@ async def test_an_iterator_opened_for_a_cancelled_handling_is_closed() -> None:
     async with P.Pools.open(cpu_workers=1, io_workers=2, cpu_backend="thread") as pools:
         with run_error(ValueError, "^boom"):
             await outputs_of(stage, [1], pools)
-        # a pool task behind the run's release on the free thread: a release that did not wait for the open
+        # a pool task behind the run's release on the idle thread: a release that did not wait for the open
         # has run (too early) once it returns, rather than waiting in the queue for the pools' close
         assert await outputs_of(P.io_stage(inc), [1], pools) == [2]
         assert not rows.closed.is_set()

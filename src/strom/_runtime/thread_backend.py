@@ -18,8 +18,8 @@ class _ThreadWorker(Worker):
     `affinity` names the thread: an iterator stays on the thread that opened it) and this process's worker
     handles (one per process, shared by the threads)."""
 
-    def __init__(self, worker: WorkerId) -> None:
-        init_worker(worker)
+    def __init__(self, worker_id: WorkerId) -> None:
+        init_worker(worker_id)
         init_handles()
 
     @override
@@ -27,7 +27,7 @@ class _ThreadWorker(Worker):
         return fn(arg)
 
     @override
-    def holds_pinned(self) -> bool:
+    def holds_state(self) -> bool:
         return holds_iterators()
 
     @override
@@ -50,7 +50,7 @@ class ThreadBackend(StreamingBackend):
 
     @override
     async def run[A, B](self, fn: Callable[[A], B], arg: A, *, affinity: WorkerId | None = None) -> B:
-        return await asyncio.wrap_future(self._pool.submit(fn, arg, affinity))
+        return await self._pool.run(fn, arg, affinity)
 
     @override
     def release(self, scope: str) -> None:

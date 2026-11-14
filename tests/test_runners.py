@@ -22,6 +22,7 @@ from helpers import (
 )
 
 import strom as P
+from strom.backends import WorkerId
 
 
 # ------------------------------------------------------------------------------ outputs
@@ -326,30 +327,52 @@ async def test_an_exception_group_of_the_inputs_stays_whole(pools: P.Pools) -> N
     assert info.value.exceptions == (users,)
 
 
-async def test_queued_pool_tasks_do_not_run_after_an_error_of_the_inputs() -> None:
-    """Cancelling the steps cancels their queued pool tasks; the failure flag the inputs set as well only
-    narrows the window before that (removing it passes: the window is too short to hit)."""
-    io_pool = CountingThreads(workers=1)
-    failed = threading.Event()  # set by the inputs just before they fail
+class ShieldingThreads(CountingThreads):
+    """Shields its pool tasks from the cancellation of their callers: a cancelled caller stops waiting, and its
+    pool task stays queued and outlives it (as on a backend that dispatches its pool tasks ahead)."""
+
+    @override
+    async def run[A, B](self, fn: Callable[[A], B], arg: A, *, affinity: WorkerId | None = None) -> B:
+        # started eagerly, like its pool task: inputs that wait for the count see it when their step has called
+        run_task = asyncio.Task(super().run(fn, arg, affinity=affinity), eager_start=True)
+        # its error is retrieved also when its caller has left (`asyncio.shield` would report it to the loop)
+        run_task.add_done_callback(lambda task: task.cancelled() or task.exception())
+        await asyncio.wait([run_task])  # unlike `await run_task`, it passes no cancellation on
+        return run_task.result()
+
+
+@pytest.mark.parametrize(
+    "make_io_pool", [CountingThreads, ShieldingThreads], ids=["cancelled with their callers", "outliving their callers"]
+)
+async def test_queued_pool_tasks_do_not_run_after_an_error_of_the_inputs(make_io_pool: type[CountingThreads]) -> None:
+    """Cancelling the steps cancels their queued pool tasks, and the failure flag skips them: either alone keeps
+    them from running. Where pool tasks outlive their callers, only the flag does, which the feeder sets for an
+    error of the inputs. The first one ends only once the run has failed."""
+    io_pool = make_io_pool(workers=1)
+    running = threading.Event()  # set once the first pool task runs
+    failed = threading.Event()  # set once the run has failed
     started: list[int] = []
 
     def numbers() -> Iterator[int]:
-        """Fails once all four tasks of the step have submitted a pool task (three wait behind the first)."""
+        """Fails once all four tasks of the step have submitted a pool task (three wait behind the first) and the
+        first one runs: one that its thread took only after the failure would not run either."""
         for item in itertools.count():
             if io_pool.num_submitted >= 4:
-                failed.set()
+                assert running.wait(WAIT_LIMIT_TIME), "the first pool task did not start"
                 raise ValueError("cannot read")
             yield item
 
     def wait_for_the_failure(item: int) -> list[int]:
         started.append(item)
+        running.set()
         assert failed.wait(WAIT_LIMIT_TIME)
         return [item]
 
     async with P.Pools.open_on(cpu=P.Threads(workers=1), io=io_pool) as pools:
         with run_error(ValueError, "^cannot read$"):
             await outputs_of(P.io_stage(wait_for_the_failure, concurrency=4), numbers(), pools)
-        # before the pools close, which cancels queued pool tasks: once a later one has run on the one
+        failed.set()
+        # before the pools close, which drops queued pool tasks: once a later one has run on the one
         # thread, every earlier one has run or was skipped
         await asyncio.wait_for(io_pool.run(abs, 0), WAIT_LIMIT_TIME)
         assert len(started) == 1

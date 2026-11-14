@@ -29,8 +29,11 @@ for asyncio in 4.16.0: why shared code stays out of the slices).
 Measured: against the single module, interleaved medians 1.00 and 1.00 (2026-11-03). The backends from parts
 (`bin/ab.py`, `BENCH_SCALE=0.5`, 9 interleaved runs each, 2026-11-09): io, cpu, latency and thread rows within noise (p
 0.12–0.97); `run_overhead_new_pools[process]` 1.009 (p < 0.001), from where a collection falls in a new worker's
-start-up, not from the code: with `gc.freeze()` in the forkserver both take 4.9 ms per first call (`docs/todo.md`,
-Performance).
+start-up, not from the code: with `gc.freeze()` in the forkserver both take 4.9 ms per first call. Not a reason to
+freeze (2026-11-13, the first call of a fresh `Processes(workers=1)`, 25 lifecycles per run, 9 runs per side
+alternated): `gc.freeze()` first in `serve` and at import of the main module (in the forkserver too) changed nothing;
+pinned to 12 cores every variant took either about 2.3 or about 5.5 ms per first call, the same in a run, from where the
+processes landed; pinned to two cores always 2.0 ms, with `serve` freezing 0.03 ms slower.
 
 **Rejected**
 

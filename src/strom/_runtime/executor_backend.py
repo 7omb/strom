@@ -11,9 +11,7 @@ from concurrent.futures import BrokenExecutor, Executor
 from dataclasses import dataclass
 from typing import Final, final, override
 
-from strom._runtime.backends import Backend
-
-_BACKEND_CLOSED = "the backend is closed (its Pools is closed)"
+from strom._runtime.backends import BACKEND_CLOSED, Backend
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,7 +55,7 @@ class ExecutorBackend(Backend):
                 self._state = _Running(executor)
                 return executor
             case _Closed():
-                raise RuntimeError(_BACKEND_CLOSED)
+                raise RuntimeError(BACKEND_CLOSED)
 
     @override
     async def run[A, B](self, fn: Callable[[A], B], arg: A) -> B:

@@ -46,13 +46,13 @@ type _Pipe = Connection[bytes, bytes]
 
 
 # ---- the child's side
-def serve(conn: _Pipe, worker: WorkerId) -> None:
+def serve(conn: _Pipe, worker_id: WorkerId) -> None:
     """The main function of a worker process: one call after another from its pipe, in its main thread, until
     the parent ends it (or is gone); then it closes the worker handles it still holds.
 
     It has an iterator registry and a handle table of its own (`init_worker`, `init_handles`)."""
     multiprocessing.current_process().daemon = False  # a daemon for its parent only (see the module docstring)
-    init_worker(worker)
+    init_worker(worker_id)
     init_handles()
     try:
         while True:
@@ -113,9 +113,9 @@ class _ProcessWorker(Worker):
     ran then fails with `BrokenProcessPool`; one that died idle ran none), ended when the thread ends. Used by
     its thread only."""
 
-    def __init__(self, context: DefaultContext, worker: WorkerId) -> None:
+    def __init__(self, context: DefaultContext, worker_id: WorkerId) -> None:
         self._context = context
-        self._id = worker
+        self._id = worker_id
         self._child: tuple[BaseProcess, _Pipe] | None = None
 
     @override
@@ -133,12 +133,12 @@ class _ProcessWorker(Worker):
                 self._drop()
                 _, conn = self._start()
                 conn.send_bytes(call)
-            answer = conn.recv_bytes()
+            reply = conn.recv_bytes()
         except (EOFError, OSError) as error:
             self._drop()
             raise BrokenProcessPool("a worker process ended while it ran a pool task") from error
-        reply: tuple[B, BaseException | None, str] = pickle.loads(answer)  # noqa: S301 (its own child's)
-        result, raised, remote_traceback = reply
+        unpickled: tuple[B, BaseException | None, str] = pickle.loads(reply)  # noqa: S301 (its own child's)
+        result, raised, remote_traceback = unpickled
         if raised is None:
             return result
         raised.__cause__ = _RemoteTraceback(remote_traceback)
@@ -202,7 +202,7 @@ class ProcessBackend(Backend):
 
     @override
     async def run[A, B](self, fn: Callable[[A], B], arg: A) -> B:
-        return await asyncio.wrap_future(self._pool.submit(fn, arg))
+        return await self._pool.run(fn, arg)
 
     @override
     async def close_handle(self, key: str) -> None:

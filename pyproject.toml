@@ -106,7 +106,9 @@ warn_unreachable = true
 [tool.pyright]
 pythonVersion = "3.14"
 include = ["src", "tests", "benchmarks", "bin", "tools"]  # examples: see [tool.mypy]
-extraPaths = ["tools"]  # the wrappers in bin and the tests import strom_tools from there
+# strom from this tree's src, not through the venv's editable install (the working tree's src, also in a copy of
+# another revision: `bin/typing_snapshot.py diff --against`); the wrappers in bin and the tests import strom_tools
+extraPaths = ["src", "tools"]
 venvPath = "."
 venv = ".venv"
 enableTypeIgnoreComments = false  # `# type: ignore` is mypy's; pyright's own is `# pyright: ignore[rule]`
