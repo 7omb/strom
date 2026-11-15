@@ -41,6 +41,6 @@ Where each kind of fact lives, once (point there, don't copy it):
   the note goes.
 - Research is a snapshot of its date and is not continued: no marks of what was implemented since or is still open
   (decisions go to `docs/decisions/`, open steps to `docs/todo.md`); only its references follow renames. A design
-  belongs in a plan; form: the subagent `researcher`.
+  belongs in a plan; form: the skill `research`.
 - Move finished tasks out of `docs/todo.md`; cite a task by its ID, code by name, not by line number.
 - No numbers that go stale: `ARCHITECTURE.md`, Conventions, Code.

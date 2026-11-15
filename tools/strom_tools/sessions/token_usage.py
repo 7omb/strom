@@ -37,8 +37,13 @@ class Tokens:
 def usage(path: Path) -> list[Tokens]:
     """The token usage of the session with the transcript `path`: its own conversation, then each subagent's,
     oldest first."""
-    subagents = [_tokens(subagent_type(subagent), subagent) for subagent in subagent_transcripts(path)]
-    return [_tokens("session", path), *subagents]
+    return [_tokens("session", path), *(tokens for _, tokens in subagent_usage(path))]
+
+
+def subagent_usage(path: Path) -> list[tuple[str, Tokens]]:
+    """The token usage of each subagent of the session with the transcript `path`, with the name of the subagent's
+    transcript (`agent-ID`), oldest first."""
+    return [(subagent.stem, _tokens(subagent_type(subagent), subagent)) for subagent in subagent_transcripts(path)]
 
 
 def _tokens(conversation: str, path: Path) -> Tokens:

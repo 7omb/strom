@@ -22,6 +22,7 @@ def test_parse_makes_the_event_with_the_fields_the_handlers_use() -> None:
     in_subagent = {**bash, "agent_id": "a1", "agent_type": "reviewer"}
     assert parse(in_subagent) == ToolUsed(SESSION, "Bash", None, "ls", "a1")
     assert parse({**bash, "hook_event_name": "PreToolUse"}) == ToolRequested(SESSION, "Bash", "ls")
+    assert parse({**in_subagent, "hook_event_name": "PreToolUse"}) == ToolRequested(SESSION, "Bash", "ls", "reviewer")
     assert parse({**BASE, "hook_event_name": "Stop", "stop_hook_active": True}) == TurnEnded(SESSION, again=True)
     assert parse({**BASE, "hook_event_name": "Stop"}) == TurnEnded(SESSION, again=False)
     assert parse({**BASE, "hook_event_name": "SessionStart", "source": "clear"}) == SessionStarted(SESSION, "clear")

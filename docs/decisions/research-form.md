@@ -1,9 +1,9 @@
 # Research form
 
 A research note opens with its answer, orders its findings by claim and lists its sources with how each was read,
-because the notes before had their recommendation after 200 lines and no URL (2026-11-15). The parts are in the
-definition of the subagent `researcher` (`.claude/agents/researcher.md`), whose answer has them; the evidence is in
-`docs/research/docs-writing.md` (2.1 to 2.6).
+because the notes before had their recommendation after 200 lines and no URL (2026-11-15). The parts of a note are in
+the skill `research`, those of a report in the definition of the subagent `researcher` (`.claude/agents/researcher.md`);
+the evidence is in `docs/research/docs-writing.md` (2.1 to 2.6).
 
 - A pinpoint into the source is the mark of having read it, so a lesser read is said at the claim.
 - A design with signatures or pseudo-code belongs in a plan, because a snapshot cannot follow the code.

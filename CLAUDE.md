@@ -29,9 +29,9 @@ the files they work on). Where each kind of fact lives and how the docs are main
   with `bin/ab.py -- -k …` and `BENCH_SCALE`, in the background. A background command notifies when it ends: wait for
   that, never beside it with a `sleep` loop; to wait for anything else, the Monitor tool.
 - Reviews: skill `review`; plans: skill `plan` (a revised plan is self-contained, never mentions earlier versions).
-  Research (literature, other libraries): one subagent `researcher` per topic; an independent review: the subagent
-  `reviewer` (`.claude/agents/`). A subagent run costs about as much as a small session: more than two for one task only
-  when the user asks.
+  Research (literature, other libraries): skill `research`, with one subagent `researcher` per topic; an independent
+  review: the subagent `reviewer` (`.claude/agents/`). A subagent run costs about as much as a small session: more than
+  two for one task only when the user asks.
 - A report ends with what is left: the open findings or tasks by ID, and the commands the user has to run (staging,
   commit, push, copying a prepared file).
 

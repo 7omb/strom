@@ -5,12 +5,14 @@ Claude can't write `.claude/settings.json` (self-modification): so the settings 
 decided here and in the handler modules. What the fixers and the checks are, the Makefile says: the handlers
 run its targets (`make fix`, `make lint-python`, `make lint-docs`), as the git hooks do.
 
-  PreToolUse Bash                      `command_guards.before_bash`: refuse a command against an agreement
+  PreToolUse Bash                      `command_guards.before_bash`: refuse a command against an agreement, and
+                                       what writes the repository to a subagent that changes nothing
   PostToolUse Edit, MultiEdit, Write   `python_fixes.after_edit`: fix and lint the edited Python file
   PostToolUse Bash                     `rules_loading.after_bash`: load the `.claude/rules` a command touched
   Stop                                 `python_fixes.at_stop`: fix and lint every changed Python file
                                        `docs_fixes.at_stop`: format the changed Markdown files, check the docs
-                                       `friction_notes.at_stop`: say when the context was summarised or is large
+                                       `friction_notes.at_stop`: say when the context was summarised or is large,
+                                       and when a subagent's run weighed much
   SessionStart                         `friction_notes.at_start`: suggest the skill `retro` after much friction
                                        `rules_loading.at_start`: after a summary, forget the rules it added
                                        `context_notes.at_start`: after a summary, the plans and changed files

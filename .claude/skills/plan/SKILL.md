@@ -38,8 +38,11 @@ findings is a review (skill `review`).
    script in the scratchpad before it goes into the plan; third-party packages via
    `uv run --frozen --with PKG python probe.py`.
 4. **Review** before handing it over: one pass with the lenses of `ARCHITECTURE.md`, and every design and example
-   against the requirements; fix what it finds. What needs the user's decision is an open question of the plan, named in
-   the chat.
+   against the requirements; fix what it finds. A plan whose task is marked **API** (`docs/todo.md`) is then read by the
+   subagent `reviewer` too, because the author's pass is anchored on the design it wrote: give it the plan as its scope
+   and what the plan is for, once when the plan is written and again when a revision changes its Result. The run counts
+   toward the subagents of the task (`CLAUDE.md`, Process), so ask first when two researchers ran. What needs the user's
+   decision is an open question of the plan, named in the chat.
 
 ## Revising one
 
@@ -48,8 +51,8 @@ When asked to go through a plan again (errors, simplifications, research):
 - Update the requirements first.
 - Check each step against the current code; look for contradictions and steps that can go.
 - Research how established libraries and frameworks solved the same interface: their best practices and the pitfalls
-  they ran into. A subagent `researcher` per topic reads the sources, with its questions listed in the prompt (how many
-  may run: `CLAUDE.md`, Process). Cite the sources, with its marks of what was not read in the source itself.
+  they ran into (skill `research`: the subagent `researcher` reads the sources). Cite the note it gives, or a single
+  source with the mark of how it was read.
 - **The revision replaces the plan in place and is self-contained**: it never mentions the earlier version, what
   changed, or "V2"/"V3" (the user asked for this repeatedly; git keeps the history). Report the differences in the chat,
   not in the plan.

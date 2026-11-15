@@ -1,6 +1,6 @@
 ---
 name: reviewer
-description: Reviews a scope of strom in a separate context - a change, the staged state, a package or module, or a plan - and returns numbered findings with fixes; it changes nothing. Step 7 of the skill validate-change runs it for a change to src/; else use it when the user asks for an independent review. Give it the scope, what the change or plan is for, and optionally the one criterion of the skill review to check.
+description: Reviews a scope of strom in a separate context - a change, the staged state, a package or module, or a plan - and returns numbered findings with fixes; it changes nothing. The skill validate-change runs it for a change to src/, the skill plan for a plan of the public API; else use it when the user asks. Give it the scope, its purpose, and perhaps the one criterion of the skill review to check.
 tools: Read, Grep, Glob, Bash
 skills:
   - review

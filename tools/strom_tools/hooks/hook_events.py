@@ -23,6 +23,8 @@ class ToolRequested:
     tool: str
     command: str | None
     """The command of a Bash call."""
+    agent_type: str | None = None
+    """The type of the subagent whose call it is (`reviewer`); None for a call of the session's own conversation."""
 
 
 @dataclass(frozen=True)
@@ -69,7 +71,8 @@ def parse(payload: object) -> HookEvent | None:
     match member(payload, "hook_event_name"):
         case "PreToolUse":
             command = _text(member(member(payload, "tool_input"), "command"))
-            return ToolRequested(session, str(member(payload, "tool_name")), command)
+            agent_type = _text(member(payload, "agent_type"))
+            return ToolRequested(session, str(member(payload, "tool_name")), command, agent_type)
         case "PostToolUse":
             tool_input = member(payload, "tool_input")
             return ToolUsed(

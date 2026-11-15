@@ -85,11 +85,10 @@ changes the public API, **Plan** one that gets a plan (skill `plan`) before code
 - **B30. Report the checker limitations upstream** (`.claude/rules/typing.md` and the notes it lists): public issues on
   mypy, pyright and ty, so the user's step; Claude can prepare minimal reproductions.
 - **B32. The findings of the review of terms and names**: `docs/plans/naming-review.md`.
-- **B33. Whether the limits on the subagents hold.** No run has used the definitions with the budget of `researcher` and
-  the reading by hunk of `reviewer` (`docs/decisions/subagents.md`). After the next research run and the next review,
-  `bin/sessions.py tokens SESSION`: expected are under 0.3M weighted for a research run and under 0.6M for a review.
-  Check one finding of the research report against its source by hand; if the report is wrong or thin, remove
-  `model: sonnet`.
+- **B33. Whether the limit on `reviewer` holds for code.** A research run and a review of docs weighed under 0.1M each
+  with the limits of the definitions (`docs/decisions/subagents.md`, Measured). No review of a change to `src/` has read
+  by hunk yet: after the next one, `bin/sessions.py tokens SESSION`, expected under 0.6M weighted (the Stop hook names a
+  heavier run). Also open: whether `maxTurns` of `researcher` cuts a run that stays within its budget of tool calls.
 
 ## Open questions for the user
 

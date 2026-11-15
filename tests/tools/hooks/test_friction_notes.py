@@ -4,6 +4,7 @@ from pathlib import Path
 from tool_helpers import api_answer, write_transcript
 
 from strom_tools.hooks.friction_notes import (
+    _HEAVY_SUBAGENT,
     _LARGE_CONTEXT,
     _MIN_SESSIONS,
     _THRESHOLDS,
@@ -101,3 +102,31 @@ def test_a_stop_says_once_per_session_that_the_context_is_large(tmp_path: Path) 
     assert isinstance(at_stop(repository, TurnEnded(other, again=False)), Note), "a memo per session"
     at_end(repository, SessionEnded(session))
     assert isinstance(at_stop(repository, TurnEnded(session, again=False)), Note), "the end forgets it"
+
+
+def test_a_stop_names_once_each_subagent_whose_run_weighed_much(tmp_path: Path) -> None:
+    def run(agent_id: str, agent_type: str, weight: int) -> None:
+        """The transcript of a subagent with one request of that weight (2 input tokens, the rest output)."""
+        write_transcript(subagents / f"agent-{agent_id}.jsonl", [api_answer("m1", output=(weight - 2) // 5)])
+        (subagents / f"agent-{agent_id}.meta.json").write_text(f'{{"agentType": "{agent_type}"}}', encoding="utf-8")
+
+    repository = Repository(tmp_path)
+    session = Session("abcdef0123", write_transcript(tmp_path / "abcdef0123.jsonl", []))
+    subagents = tmp_path / "abcdef0123" / "subagents"
+    subagents.mkdir(parents=True)
+    run("a1", "researcher", _HEAVY_SUBAGENT - 5)
+    assert at_stop(repository, TurnEnded(session, again=False)) is None
+    run("a1", "researcher", _HEAVY_SUBAGENT + 2)
+    result = at_stop(repository, TurnEnded(session, again=False))
+    assert isinstance(result, Note) and result.for_claude is None and result.for_user is not None
+    assert result.for_user.startswith("A run of the subagent `researcher` weighed 0.6M tokens in 1 requests")
+    assert "bin/sessions.py tokens abcdef01" in result.for_user
+    assert at_stop(repository, TurnEnded(session, again=False)) is None, "said before"
+    run("a2", "reviewer", 2 * _HEAVY_SUBAGENT)
+    again = at_stop(repository, TurnEnded(session, again=False))
+    assert isinstance(again, Note) and again.for_user is not None
+    assert "`reviewer` weighed 1.2M" in again.for_user and "researcher" not in again.for_user, "a memo per run"
+    at_end(repository, SessionEnded(session))
+    both = at_stop(repository, TurnEnded(session, again=False))
+    assert isinstance(both, Note) and both.for_user is not None, "the end forgets them"
+    assert "researcher" in both.for_user and "reviewer" in both.for_user

@@ -20,3 +20,7 @@ paths:
   some turns later, when Claude Code listed it as new). Until then a general-purpose agent that is told to read the
   definition first stands in. Claude Code starts a subagent only where the user, `CLAUDE.md` or a skill names it. Its
   tool calls run the same hooks (`strom_tools.hooks.rules_loading`).
+- A finished subagent goes on with its context when SendMessage names its id (2026-11-15: a resumed `web-fetch` agent
+  corrected its earlier report). Of the front matter of a definition, `maxTurns` stops a run with a partial report that
+  can be resumed, and `omitClaudeMd` starts it without `CLAUDE.md` (Claude Code's docs, read 2026-11-15). What counts as
+  a turn is not documented, and no run here has reached the limit of `researcher` yet.
