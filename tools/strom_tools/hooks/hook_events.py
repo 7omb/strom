@@ -35,6 +35,8 @@ class ToolUsed:
     """The file an Edit or a Write named."""
     command: str | None
     """The command of a Bash call."""
+    agent_id: str | None
+    """The subagent whose call it was; None for a call of the session's own conversation."""
 
 
 @dataclass(frozen=True)
@@ -75,6 +77,7 @@ def parse(payload: object) -> HookEvent | None:
                 str(member(payload, "tool_name")),
                 _text(member(tool_input, "file_path")),
                 _text(member(tool_input, "command")),
+                _text(member(payload, "agent_id")),
             )
         case "Stop":
             return TurnEnded(session, member(payload, "stop_hook_active") is True)

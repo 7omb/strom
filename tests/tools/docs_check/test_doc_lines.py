@@ -11,3 +11,8 @@ def test_each_line_has_its_context() -> None:
         *[Context.PROSE] * 2,
     ]
     assert [line.context for line in lines_of("text\n---\n")] == [Context.PROSE] * 2, "front matter only at the top"
+
+
+def test_the_list_under_rejected_ends_at_the_next_line_in_bold() -> None:
+    text = "**Rejected** (not done)\n\n- old\n  more\n\n**Measured**\n\n- new\n"
+    assert [line.context for line in lines_of(text)] == [*[Context.REJECTED] * 5, *[Context.PROSE] * 3]

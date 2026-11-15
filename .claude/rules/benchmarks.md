@@ -22,6 +22,6 @@ baselines (`git tag -l 'baseline/*'`):
 
 | Tag | The state it keeps |
 | -- | -- |
-| `baseline/2026-11-11` | the built-in backends on a pool of their own, the metrics in `strom.metrics` |
+| `baseline/2026-11-11` | the built-in backends on their own pool, the metrics in `strom.metrics` |
 
 The measurements before it name their state in words and by date: those states went with the squashed history.

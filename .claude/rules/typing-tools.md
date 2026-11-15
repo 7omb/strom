@@ -20,8 +20,8 @@ paths:
 
 Besides:
 
-- A line `# /// script` of its own makes a file a PEP 723 script for ty, also inside a string literal: ty then resolves
-  the file's imports against no path of the project (`tests/tools/test_example_scripts.py` builds the header from a list
-  of lines, 2026-11-11).
+- A line that holds only `# /// script` makes a file a PEP 723 script for ty, also inside a string literal: ty then
+  resolves the file's imports against no path of the project (`tests/tools/test_example_scripts.py` builds the header
+  from a list of lines, 2026-11-11).
 - ty has no `__name__` on a value typed `Callable[...]`: `getattr(handler, "__name__", ...)` assigned to an annotated
   variable (`strom_tools.hooks.dispatcher`, 2026-11-11).

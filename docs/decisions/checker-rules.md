@@ -1,13 +1,15 @@
 # Checker rules
 
-The rule sets of ruff and the error codes of mypy beyond `--strict` that cost little on the day they were measured and
-name a class of bug or of rot, all in `pyproject.toml` (2026-11-11). ruff: the sets with no or a few hits then (`A`,
-`ASYNC`, `C4`, `DTZ`, `ERA`, `FA`, `FLY`, `FURB`, `G`, `ISC`, `LOG`, `PERF`, `PGH`, `PIE`, `PTH`, `Q`, `RET`, `RSE`,
-`RUF`, `SIM`, `SLOT`, `T10`, `TID`, `YTT`): 58 hits, among them `RUF043` (8 `pytest.raises(match=)` patterns with
-unescaped metacharacters) and `RUF100` (17 stale `noqa`). mypy: `ignore-without-code`, `possibly-undefined`,
-`exhaustive-match`, `redundant-expr`, `truthy-bool`, `unused-awaitable` and the others listed there, `strict_bytes`: 8
-diagnostics, 3 kept as ignores (`.claude/rules/typing.md`); `warn_unreachable` for the library and the tools only.
-pyright: `docs/decisions/pyright-strict.md`
+ruff and mypy run every rule set and error code beyond `--strict` that cost little on the day it was measured and that
+names a class of bug or of rot. All of them are in `pyproject.toml`.
+
+- ruff: the sets with no or a few hits then (`A`, `ASYNC`, `C4`, `DTZ`, `ERA`, `FA`, `FLY`, `FURB`, `G`, `ISC`, `LOG`,
+  `PERF`, `PGH`, `PIE`, `PTH`, `Q`, `RET`, `RSE`, `RUF`, `SIM`, `SLOT`, `T10`, `TID`, `YTT`): 58 hits, among them
+  `RUF043` (8 `pytest.raises(match=)` patterns with unescaped metacharacters) and `RUF100` (17 stale `noqa`).
+- mypy: `ignore-without-code`, `possibly-undefined`, `exhaustive-match`, `redundant-expr`, `truthy-bool`,
+  `unused-awaitable` and the others listed there, and `strict_bytes`: 8 diagnostics, 3 kept as ignores
+  (`.claude/rules/typing.md`). `warn_unreachable` holds for the library and the tools only.
+- pyright: `docs/decisions/pyright-strict.md`.
 
 **Rejected**
 

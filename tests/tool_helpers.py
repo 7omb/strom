@@ -96,6 +96,38 @@ def write_transcript(path: Path, records: Sequence[object]) -> Path:
     return path
 
 
+def user_record(content: object, at: str | None = None, **more: object) -> dict[str, object]:
+    """A record of a transcript with a message of the user: a text, or a list of blocks (`tool_result`)."""
+    return {"type": "user", "timestamp": at, "message": {"content": content}, **more}
+
+
+def assistant_record(*blocks: object, at: str | None = None, **message: object) -> dict[str, object]:
+    """A record with a message of Claude: its blocks (`tool_use`), and what else the message holds (`usage`)."""
+    return {"type": "assistant", "timestamp": at, "message": {"content": list(blocks), **message}}
+
+
+def tool_use(tool_id: str, name: str, **tool_input: object) -> dict[str, object]:
+    return {"type": "tool_use", "id": tool_id, "name": name, "input": tool_input}
+
+
+def tool_result(tool_id: str, text: str, *, is_error: bool = False) -> dict[str, object]:
+    return {"type": "tool_result", "tool_use_id": tool_id, "content": text, "is_error": is_error}
+
+
+def api_answer(
+    message_id: str, *, read: int = 0, output: int = 0, written: int = 0, for_an_hour: int = 0, model: str = "claude"
+) -> dict[str, object]:
+    """The record of Claude's answer to a request, charged 2 input tokens beside the given ones."""
+    usage = {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": written + for_an_hour,
+        "cache_read_input_tokens": read,
+        "output_tokens": output,
+        "cache_creation": {"ephemeral_1h_input_tokens": for_an_hour, "ephemeral_5m_input_tokens": written},
+    }
+    return assistant_record(id=message_id, model=model, usage=usage)
+
+
 TOOLS = Path(__file__).resolve().parents[1] / "tools"
 
 

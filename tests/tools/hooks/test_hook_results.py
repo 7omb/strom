@@ -18,7 +18,7 @@ SESSION = Session("abcd", Path("/transcripts/abcd.jsonl"))
 def test_an_event_is_named_as_claude_code_names_it() -> None:
     events: list[HookEvent] = [
         ToolRequested(SESSION, "Bash", "ls"),
-        ToolUsed(SESSION, "Edit", None, None),
+        ToolUsed(SESSION, "Edit", None, None, None),
         TurnEnded(SESSION, False),
         SessionStarted(SESSION, "startup"),
         SessionEnded(SESSION),

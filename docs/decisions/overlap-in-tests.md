@@ -1,9 +1,9 @@
 # Overlap in tests
 
-Barriers, events, `Tracker.saturating`
+Tests make steps overlap with barriers, events and `Tracker.saturating`, not with sleeps, because sleeps are slow and
+depend on timing.
 
 **Rejected**
 
-- sleeps (slow, timing-dependent)
-- virtual-time loops (can't cover thread sleeps) [unverified]
+- virtual-time loops (can't cover thread sleeps; unverified)
 - a manual clock in real runs (non-deterministic interleavings)

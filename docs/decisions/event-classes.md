@@ -1,12 +1,17 @@
 # Event classes
 
-Plain `@final` classes with `__slots__`, `__match_args__` and `Final` attributes; `RunStarted` (with the step
-occurrences), one `InputHandled` per input a task took, whatever its `Outcome` (done, failed, cancelled), with its wait
-and all counts; one `TaskFinished` per task whose coroutine ran (hence not `StepFinished`); `PoolTaskFinished`;
-`RunFinished` with the run's `Outcome`. Both carry the task index `task`: per task, the events partition its lifetime
-(each `wait_started_at` is the previous `ended_at`: one clock read per input and step less). Intervals end in
-`ended_at`, closing events are `<Subject>Finished`; field names follow the naming conventions (`ARCHITECTURE.md`)
-(2026-11-06)
+The events of a run are plain `@final` classes with `__slots__`, `__match_args__` and `Final` attributes, and per task
+they partition its lifetime, so that a test can check them and an exporter can nest spans per task.
+
+- `RunStarted` holds the step occurrences.
+- One `InputHandled` stands for each input a task took, whatever its `Outcome` (done, failed, cancelled), with its wait
+  and all counts.
+- One `TaskFinished` stands for each task whose coroutine ran (hence not `StepFinished`).
+- `PoolTaskFinished` stands for a pool task, and `RunFinished` carries the run's `Outcome`.
+
+`InputHandled` and `TaskFinished` carry the task index `task`. Each `wait_started_at` is the previous `ended_at`, which
+saves one clock read per input and step. Intervals end in `ended_at`, closing events are `<Subject>Finished`, and field
+names follow the naming conventions (`ARCHITECTURE.md`).
 
 **Rejected**
 

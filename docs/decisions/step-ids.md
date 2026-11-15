@@ -1,11 +1,11 @@
 # Step ids
 
-Position path; the order of the stage from `RunStarted.steps` (`step_ids`, a pure walk of the fused stage mirroring
-`_run_streaming`; a property test checks that the events' ids equal it, 2026-11-06)
+A step id is the step occurrence's position in the stage, a path, because a number in start order followed the task
+scheduling: branch steps came after later steps. The order of the stage comes from `RunStarted.steps` (`step_ids`, a
+pure walk of the fused stage that mirrors `_run_streaming`); a property test checks that the events' ids equal it.
 
 **Rejected**
 
-- numbering in start order (followed task scheduling: branch steps came after later steps)
 - a pre-order number (needs subtree sizes, loses the branch)
 - a path over the binary chain (`(a|b)|c` ≠ `a|(b|c)`)
 - numbering a rebuilt stage (one step object can sit in two places)

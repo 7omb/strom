@@ -18,13 +18,20 @@ what the request names; when it names nothing, all of these:
   unconfirmed.
 - **Consistency**: names follow `GLOSSARY.md` and the naming conventions (one term per concept); the reference and
   streaming interpreters agree in structure and entry points.
-- **Structure**: cohesive modules with narrow public surfaces (privacy by namespace); a definition lives with its only
-  user; no import cycles; SOLID where it applies to functional code.
-- **Simplicity**: leftovers of old designs, duplications, ceremony, options without a use.
+- **Structure**:
+  - cohesive modules with narrow public surfaces (privacy by namespace), a definition with its only user;
+  - no import cycle, no import that reads as a layer break (`ARCHITECTURE.md`, Packages; the tools:
+    `tools/strom_tools/__init__.py`);
+  - a class with one concern and few private methods, a function that does one thing;
+  - a protocol in explicit states, not in flags or `None`;
+  - SOLID where it applies to functional code.
+- **Simplicity**: leftovers of old designs, duplications, ceremony, options without a use; an abstraction, a parameter
+  or a branch with one use, a helper that only forwards; a check in two places.
 - **Tests**: orthogonal to each other, testing behaviour through the public API where possible; no public addition only
-  for tests.
+  for tests; no test that would pass without the change (what bug would it catch?), no assertion weakened to pass.
 - **Docs**: each fact once and in its place (`.claude/rules/docs.md`), short and precise, up to date
-  (`bin/check_docs.py`), no history of past designs outside `docs/decisions/`.
+  (`bin/check_docs.py`; its option `--style` lists the passages worth a look): a docstring, comment or doc says what the
+  code does now; no history of past designs outside `docs/decisions/`.
 - **UX and DX**: what a user or contributor must learn; names that mislead.
 
 ## Output

@@ -6,8 +6,7 @@ paths:
 
 # Tests
 
-Conventions for tests: `ARCHITECTURE.md`. How a change to tests is checked (collected IDs, injected bugs): skill
-`validate-change`.
+How a change to tests is checked (collected IDs, injected bugs): skill `validate-change`.
 
 - Every sleep must be intentional; a docstring where it occurs explains why it is needed.
 - After a failing run, rerun only the failures: `make test ARGS="--lf"`; `--sw` (stepwise) stops at the first and starts

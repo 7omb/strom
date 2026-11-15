@@ -2,7 +2,15 @@ import os
 from pathlib import Path
 
 import pytest
-from tool_helpers import run_command, write_transcript
+from tool_helpers import (
+    api_answer,
+    assistant_record,
+    run_command,
+    tool_result,
+    tool_use,
+    user_record,
+    write_transcript,
+)
 
 from strom_tools.commands import sessions
 from strom_tools.sessions.friction import RetroLogged, _logged
@@ -14,15 +22,13 @@ PAST, FUTURE = "2020-01-01T10:00:00.000Z", "2999-01-01T10:00:00.000Z"
 
 
 def prompt(text: str, at: str = PAST) -> dict[str, object]:
-    return {"type": "user", "timestamp": at, "message": {"content": text}}
+    return user_record(text, at)
 
 
 def failed_call(command: str, at: str = PAST) -> list[dict[str, object]]:
-    use = {"type": "tool_use", "id": command, "name": "Bash", "input": {"command": command}}
-    result = {"type": "tool_result", "tool_use_id": command, "content": "Exit code 2", "is_error": True}
     return [
-        {"type": "assistant", "timestamp": at, "message": {"content": [use]}},
-        {"type": "user", "timestamp": at, "message": {"content": [result]}},
+        assistant_record(tool_use(command, "Bash", command=command), at=at),
+        user_record([tool_result(command, "Exit code 2", is_error=True)], at),
     ]
 
 
@@ -36,7 +42,8 @@ def recorded(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Repository:
     directory.mkdir(parents=True)
     title = {"type": "ai-title", "aiTitle": "Pools"}
     older = [prompt("Fix the pools"), title, *failed_call("make test"), prompt("Again, please")]
-    newer = [prompt("Rename it"), *failed_call("make lint"), *failed_call("make type", FUTURE)]
+    renamed = assistant_record({"type": "text", "text": "Renamed."}, at=PAST)
+    newer = [prompt("Rename it"), *failed_call("make lint"), renamed, *failed_call("make type", FUTURE)]
     write_transcript(directory / "aaaa1111-0000.jsonl", older)
     write_transcript(directory / "bbbb2222-0000.jsonl", newer)
     os.utime(directory / "aaaa1111-0000.jsonl", (1000, 1000))
@@ -66,6 +73,54 @@ def test_prompts_shows_what_the_user_typed_in_one_session(
     assert out(capsys) == ["[2020-01-01T10:00] Fix the pools", "", "[2020-01-01T10:00] Again, please", ""]
     with pytest.raises(ToolError, match="0 sessions start with 'cccc'"):
         run_command(sessions, ["prompts", "cccc"], recorded, monkeypatch)
+
+
+def test_answer_shows_claudes_last_text_in_the_turn_of_a_prompt(
+    recorded: Repository, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run_command(sessions, ["answer", "bbbb", "2020-01-01T10"], recorded, monkeypatch) == 0
+    assert out(capsys) == ["Renamed."]
+    with pytest.raises(ToolError, match="no answer to a prompt typed at '2021'"):
+        run_command(sessions, ["answer", "bbbb", "2021"], recorded, monkeypatch)
+
+
+def test_tools_adds_up_the_calls_and_the_result_sizes_of_the_sessions(
+    recorded: Repository, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert run_command(sessions, ["tools"], recorded, monkeypatch) == 0
+    assert [line.split() for line in out(capsys)] == [["tool", "calls", "result", "KB"], ["Bash", "3", "0"]]
+    run_command(sessions, ["tools", "-n", "1"], recorded, monkeypatch)
+    assert out(capsys)[1].split() == ["Bash", "2", "0"]
+    read, review = tool_use("t1", "Read", file_path="/a.py"), tool_use("t2", "Agent", subagent_type="reviewer")
+    third = [assistant_record(read, review), user_record([tool_result("t1", "x" * 2048)])]
+    write_transcript(_transcripts_dir(recorded) / "cccc3333-0000.jsonl", third)
+    run_command(sessions, ["tools", "cccc", "aaaa"], recorded, monkeypatch)
+    assert [line.split() for line in out(capsys)[1:]] == [
+        ["Read", "1", "2"],
+        ["Bash", "1", "0"],
+        ["Agent(reviewer)", "1", "0"],
+    ]
+
+
+def test_tokens_shows_a_line_per_session_and_subagent(
+    recorded: Repository, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def answer(read: int) -> dict[str, object]:
+        return api_answer("m1", read=read, output=400)
+
+    session = write_transcript(_transcripts_dir(recorded) / "cccc3333-0000.jsonl", [answer(30_000)])
+    subagents = session.with_suffix("") / "subagents"
+    subagents.mkdir(parents=True)
+    write_transcript(subagents / "agent-a1.jsonl", [answer(10_000)])
+    (subagents / "agent-a1.meta.json").write_text('{"agentType": "reviewer"}', encoding="utf-8")
+    assert run_command(sessions, ["tokens", "cccc"], recorded, monkeypatch) == 0
+    assert [line.split() for line in out(capsys)] == [
+        ["conversation", "calls", "peak", "written", "reread", "output", "total"],
+        ["cccc3333", "1", "30k", "0k", "3k", "2k", "5k"],
+        ["reviewer", "1", "10k", "0k", "1k", "2k", "3k"],
+    ]
+    run_command(sessions, ["tokens", "-n", "1"], recorded, monkeypatch)
+    assert len(out(capsys)) == 3, "the last session, which is that one"
 
 
 def test_search_finds_a_term_in_the_prompts_of_all_sessions(

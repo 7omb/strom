@@ -13,7 +13,8 @@ class Context(Enum):
     CODE = "code"
     """A code block, with its fences."""
     REJECTED = "rejected"
-    """The list under **Rejected**, up to the next heading: the alternatives cite old names on purpose."""
+    """The list under **Rejected**, up to the next heading or the next line that starts in bold: the alternatives
+    cite old names on purpose."""
     PROSE = "prose"
 
 
@@ -40,7 +41,7 @@ def lines_of(text: str) -> Iterator[Line]:
             continue
         if line.startswith("#"):
             in_rejected = False
-        elif line.startswith("**Rejected**"):
-            in_rejected = True
+        elif line.startswith("**"):
+            in_rejected = line.startswith("**Rejected**")
         context = Context.CODE if in_code_block else Context.REJECTED if in_rejected else Context.PROSE
         yield Line(number, line, context)

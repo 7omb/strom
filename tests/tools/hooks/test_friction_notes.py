@@ -1,9 +1,17 @@
 from datetime import UTC, datetime
 from pathlib import Path
 
-from tool_helpers import write_transcript
+from tool_helpers import api_answer, write_transcript
 
-from strom_tools.hooks.friction_notes import _MIN_SESSIONS, _THRESHOLDS, _suggestion, at_end, at_start, at_stop
+from strom_tools.hooks.friction_notes import (
+    _LARGE_CONTEXT,
+    _MIN_SESSIONS,
+    _THRESHOLDS,
+    _suggestion,
+    at_end,
+    at_start,
+    at_stop,
+)
 from strom_tools.hooks.hook_events import Session, SessionEnded, SessionStarted, TurnEnded
 from strom_tools.hooks.hook_results import Note
 from strom_tools.sessions.friction import Kind, SessionLogged, _append_log, _logged, log_retro
@@ -74,3 +82,22 @@ def test_a_stop_says_once_that_the_context_was_summarised(tmp_path: Path) -> Non
     write_transcript(transcript, [SUMMARY, STOPPED, SUMMARY, STOPPED])
     assert at_stop(repository, TurnEnded(Session("abcd", transcript), again=False)) is None, "said at the last stop"
     assert at_stop(repository, TurnEnded(Session("abcd", None), again=False)) is None
+
+
+def test_a_stop_says_once_per_session_that_the_context_is_large(tmp_path: Path) -> None:
+    def answer(message_id: str, context: int) -> dict[str, object]:
+        return api_answer(message_id, read=context - 2)
+
+    repository = Repository(tmp_path)
+    session = Session("abcd", tmp_path / "abcd.jsonl")
+    write_transcript(tmp_path / "abcd.jsonl", [answer("m1", _LARGE_CONTEXT - 1)])
+    assert at_stop(repository, TurnEnded(session, again=False)) is None
+    write_transcript(tmp_path / "abcd.jsonl", [answer("m1", _LARGE_CONTEXT - 1), answer("m2", _LARGE_CONTEXT)])
+    result = at_stop(repository, TurnEnded(session, again=False))
+    assert isinstance(result, Note) and result.for_claude is None and result.for_user is not None
+    assert result.for_user.startswith(f"The context of this session has {_LARGE_CONTEXT // 1000}k tokens")
+    assert at_stop(repository, TurnEnded(session, again=False)) is None, "said before"
+    other = Session("ef01", write_transcript(tmp_path / "ef01.jsonl", [answer("m1", _LARGE_CONTEXT)]))
+    assert isinstance(at_stop(repository, TurnEnded(other, again=False)), Note), "a memo per session"
+    at_end(repository, SessionEnded(session))
+    assert isinstance(at_stop(repository, TurnEnded(session, again=False)), Note), "the end forgets it"

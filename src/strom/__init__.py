@@ -12,22 +12,48 @@ model).
 A pipeline is a stage built from stages. A stage maps each input item to zero or more output items,
 and stages compose with `|`: Stage[A, B] | Stage[B, C] -> Stage[A, C]; the type checker rejects
 stages that don't fit together. A run applies a stage to each item of its inputs and gives its
-outputs as they come, as an async iterator.
+outputs as they come, as an async iterator. A step is a stage made by one call of a factory: what a
+run executes as a unit. One that waits (async_stage, io_stage, cpu_stage) has its `concurrency`, its
+row in the statistics and its name in an error's note; consecutive event-loop steps count as one
+(see Fusion).
 
-    PIPELINE: Stage[int, Score] = (
-        async_stage(fetch, concurrency=8)  # int                 -> Record
-        | cpu_stage(parse, concurrency=2)  # Record              -> (id, list of words)
-        | cpu_stage(score, concurrency=4)  # (id, list of words) -> Score
-    )
+    import asyncio
+    from collections.abc import AsyncIterator, Iterator
+
+    from strom import Pools, Stage, async_stage, cpu_stage, io_stage, stream
+
+
+    async def fetch(n: int) -> AsyncIterator[str]:  # on the event loop
+        await asyncio.sleep(0.01)
+        yield f"record {n}"
+
+
+    def score(record: str) -> Iterator[int]:  # CPU-bound: in the cpu pool
+        yield sum(map(ord, record))
+
+
+    def show(value: int) -> list[int]:  # blocking IO: in the io pool
+        print(value)
+        return [value]
+
+
+    PIPELINE: Stage[int, int] = async_stage(fetch, concurrency=8) | cpu_stage(score, concurrency=2) | io_stage(show)
+
 
     async def main() -> None:
         async with (
-            Pools.open(cpu_workers=8, io_workers=16) as pools,  # reusable for several runs
-            stream(PIPELINE, range(40), pools) as scores,
+            Pools.open(cpu_workers=2, io_workers=4) as pools,
+            stream(PIPELINE, range(20), pools) as outputs,  # a run on the inputs 0..19
         ):
-            async for score in scores: ...
+            print("total:", sum([out async for out in outputs]))
 
-    asyncio.run(main())  # sync code runs the async code like this, once
+
+    if __name__ == "__main__":
+        asyncio.run(main())
+
+It prints the 20 scores in the order they are done, which differs from run to run, and then
+`total: 14960`. Sync code runs the async code like this, once (see From sync code); the pools can
+serve several runs.
 
 Running (async only; a `Pools` is always required):
     async with Pools.open(cpu_workers=..., io_workers=...) as pools:  the pools for the block
@@ -48,14 +74,89 @@ Factories: what a function is used for and where it runs (the prefix):
     async_stage    async iterables / coroutines, on the event loop
     io_stage       blocking IO, "io" pool
     cpu_stage      CPU-bound, "cpu" pool
-  * io_stage streams an iterator: one pool task per item (the first also calls fn) and one finding the
-    end, all on the thread that opened it (so fn may use thread-bound objects, such as a sqlite3
-    connection it opens); a list or a tuple has nothing to stream and comes whole, in the one pool task
-    that calls fn. cpu_stage collects all items of fn(item) in one pool task, so they arrive together; with the
-    "process" backend, fn must be a top-level function and the items picklable, and a script needs an
+  * A pool task is one call submitted to a pool. io_stage streams the items of an iterator as they
+    come and keeps the iterator on the thread that opened it (so fn may use thread-bound objects, such
+    as a sqlite3 connection it opens); cpu_stage collects all items of fn(item), so they arrive
+    together (how many pool tasks each takes: Resources vs. concurrency). With the "process" backend,
+    fn must be a top-level function and the items picklable, and a script needs an
     `if __name__ == "__main__":` guard: the pool workers import its module (see Backends).
   * Event-loop factories without a prefix and their special cases where(pred) (keeps the items for
     which pred is true), flatten() (unpacks iterable items) and identity() (x -> x) must not block.
+  * Setup and teardown for blocking functions (a connection pool, a client, a model): worker handles,
+    see By task.
+
+Writing functions:
+  * A stage's function returns an iterable of its outputs for one input (Stage[I, O]: 0..n outputs of
+    type O per input of type I). A 1:1 function yields its one result
+    (`def inc(x: int) -> Iterator[int]: yield x + 1`); a lambda, which cannot yield, returns a
+    one-item list (`stage(lambda x: [x + 1])`); a function for an effect only returns nothing (`[]`).
+  * For io_stage the form matters: a blocking 1:1 function returns a one-item list (`return [row]`, one
+    pool task per input; a generator takes a second one to find its end), and a function that has all
+    its items at hand returns them as a list (`return cursor.fetchall()`) rather than yielding them.
+
+Concurrency:
+  * `concurrency` of a step = max number of its input items in flight at once: an input is in
+    flight from the step taking it until its last output is put (default 1: one at a time). It holds
+    per occurrence of the step in a pipeline: a step used at two places has the limit at each.
+  * Pools are shared: ONE pool per resource ("io", "cpu") per `Pools`, no matter how many steps use
+    it. Their sizes bound total resource use.
+
+Failures: the first failing item stops the run, and the end of its block raises ONE ExceptionGroup
+(a `RunFailed`) of the errors (rules: Reference, Failures); handle them with `except*`:
+    try:
+        async with stream(PIPELINE, range(20), pools) as outputs:
+            async for out in outputs: ...
+    except* ValueError as group:  # only the ValueErrors; any others propagate in a group of their own
+        for error in group.exceptions:
+            print(error, error.__notes__)  # e.g. bad item 3 ["in stage 'score'"]
+
+2. By task
+==========
+
+The examples show inputs and the outputs they give (in any order), with four small stages: upto(n)
+yields 1..n, letters(s) each letter of s, neg(n) yields -n and halves(n) yields n // 2. All that
+one combinator does is in its docstring, e.g. `help(strom.product)`.
+
+Working on pairs:
+  * first(f): (a, x) -> (b, x) for each output b of f on a; x passes through. second(f) likewise on
+    the second element. Plumbing: swap() (a, b) -> (b, a), fst() (a, b) -> a, snd() (a, b) -> b.
+        first(upto)                           (2, 'x')   =>  (1, 'x') (2, 'x')
+  * product(f, g): (a, c) -> (b, d) for each output b of f on a and each output d of g on c, f and g
+    running at the same time: per input, the Cartesian product of the branch outputs. These are the
+    same items as those of first(f) | second(g) (see Semantics).
+        product(upto, letters)                (2, 'ab')  =>  (1, 'a') (1, 'b') (2, 'a') (2, 'b')
+        product(upto, letters)                (2, '')    =>  nothing: a branch without outputs drops the input
+
+                     .-- f --> b ...
+        (a, c) ------+               +--> (b, d) for each b and each d
+                     '-- g --> d ...
+
+    To apply two stages to the same item, duplicate it first:
+        duplicate() | product(upto, neg)      2          =>  (1, -2) (2, -2)
+
+Branching by a condition:
+  * An item is tagged `Left(a)` or `Right(c)`: by tag_by(pred) (Left if pred is true), or by any
+    stage emitting `Left`/`Right` values.
+  * route(f, g) sends each tagged item to ONE branch: Left(a) to f, Right(c) to g; the outputs keep
+    their tag (Left(b), Right(d)). left(f) = route(f, identity()) applies f to Left items only,
+    right(g) = route(identity(), g) g to Right items only. untag() gives the value of either tag.
+        tag_by(is_even) | route(halves, neg)  4, 5       =>  Left(2) Right(-5)
+        tag_by(is_large) | route(io_stage(upload), stage(compress))  # Left: uploaded, Right: compressed
+
+Collecting per input:
+  * gather(f): ONE output per input: the list of f's outputs on it ([] if none, in no particular
+    order), emitted once f holds no item of the input any more.
+        gather(upto)                          3, 0       =>  [1, 2, 3] []
+
+Repeating until done:
+  * loop(f): a feedback loop: f emits Left(a) to continue with a (f is applied to it again) and
+    Right(b) to output b. An input is complete once f holds no item of it any more; one whose Lefts
+    never end never completes. E.g. paging through an API, `loop(io_stage(fetch_page))`:
+        def fetch_page(url: str) -> Iterator[Left[str] | Right[Item]]:
+            page = get(url)
+            yield from (Right(item) for item in page.items)  # output each item
+            if page.next_url:
+                yield Left(page.next_url)                     # continue with the next page
 
 Worker handles: setup and teardown for blocking functions (a connection pool, a client, a model):
     async with (
@@ -78,63 +179,30 @@ Worker handles: setup and teardown for blocking functions (a connection pool, a 
     to itself, a connection, `fn` checks out from the handle per input (`with engine.connect() as conn:`).
   * On processes the opener (a top-level function, or a partial of one) is pickled, never the handle:
     each worker process opens its own (SQLAlchemy engines neither pickle nor survive `fork`).
+  * Connection pools as worker handles (SQLAlchemy, psycopg's pool; for a driver without a pool, such
+    as sqlite3, a small thread-safe pool of your own with `check_same_thread=False`):
+        @contextmanager
+        def engine_of() -> Iterator[Engine]:
+            engine = create_engine(URL, pool_size=8, pool_timeout=5)
+            try:
+                yield engine
+            finally:
+                engine.dispose()
 
-Writing functions:
-  * A stage's function returns an iterable of its outputs for one input (Stage[I, O]: 0..n outputs of
-    type O per input of type I). A 1:1 function yields its one result
-    (`def inc(x: int) -> Iterator[int]: yield x + 1`); a lambda, which cannot yield, returns a
-    one-item list (`stage(lambda x: [x + 1])`); a function for an effect only returns nothing (`[]`).
-  * For io_stage the form matters: a blocking 1:1 function returns a one-item list (`return [row]`, one
-    pool task per input; a generator takes a second one to find its end), and a function that has all
-    its items at hand returns them as a list (`return cursor.fetchall()`) rather than yielding them.
-
-Concurrency:
-  * `concurrency` of a step = max number of its input items in flight at once (default 1: one at a
-    time), per occurrence of the step in a pipeline.
-  * Pools are shared: ONE pool per resource ("io", "cpu") per `Pools`, no matter how many steps use
-    it. Their sizes bound total resource use.
-
-Failures: the first failing item stops the run, and the end of its block raises ONE ExceptionGroup
-(a `RunFailed`) of the errors (rules: Reference, Failures); handle them with `except*`:
-    try:
-        async with stream(PIPELINE, range(40), pools) as scores:
-            async for score in scores: ...
-    except* ValueError as group:  # only the ValueErrors; any others propagate in a group of their own
-        for error in group.exceptions:
-            print(error, error.__notes__)  # e.g. bad item 3 ["in stage 'parse'"]
-
-2. Combinators by task
-======================
-
-Working on pairs (product semantics):
-  * first(f): (a, x) -> (b, x) for each output b of f on a; x passes through. second(f) likewise on
-    the second element. Plumbing: swap() (a, b) -> (b, a), fst() (a, b) -> a, snd() (a, b) -> b.
-  * product(f, g): (a, c) -> (b, d), f and g running at the same time. To apply two stages to the
-    same item, duplicate it first: `duplicate() | product(f, g)`. Per input it emits the Cartesian
-    product of the branch outputs (2 and 3 outputs give 6 pairs; none on one side, none): the same
-    items as first(f) | second(g) (see Semantics).
-
-Branching by a condition (sum semantics):
-  * An item is tagged `Left(a)` or `Right(c)`: by tag_by(pred) (Left if pred is true), or by any
-    stage emitting `Left`/`Right` values.
-  * route(f, g) sends each tagged item to ONE branch: Left(a) to f, Right(c) to g; the outputs keep
-    their tag (Left(b), Right(d)). left(f) = route(f, identity()) applies f to Left items only,
-    right(g) = route(identity(), g) g to Right items only. untag() gives the value of either tag.
-        tag_by(is_large) | route(io_stage(upload), stage(compress))  # Left: uploaded, Right: compressed
-
-Collecting per input:
-  * gather(f): ONE output per input: the list of f's outputs on it ([] if none, in no particular
-    order), emitted once f holds no item of the input any more.
-
-Repeating until done:
-  * loop(f): a feedback loop: f emits Left(a) to continue with a (f is applied to it again) and
-    Right(b) to output b. An input is complete once f holds no item of it any more; one whose Lefts
-    never end never completes. E.g. paging through an API, `loop(io_stage(fetch_page))`:
-        def fetch_page(url: str) -> Iterator[Left[str] | Right[Item]]:
-            page = get(url)
-            yield from (Right(item) for item in page.items)  # output each item
-            if page.next_url:
-                yield Left(page.next_url)                     # continue with the next page
+        def store(engine: Engine, row: Row) -> Iterator[int]:
+            with engine.begin() as conn:  # a checkout and a transaction per input
+                conn.execute(INSERT, row._asdict())
+            yield row.id                  # emitted after the commit
+    - No checkout may wait: a waiting checkout blocks a pool thread. A pool that grows on demand never
+      waits; a bounded one lends at least the sum of the `concurrency` of the steps using it, over the
+      runs at the same time (`pool_size=1` suffices in a "cpu" worker process running one call at once).
+    - A transaction per input, in `fn`, outputs after the commit: a SQLAlchemy `Connection` begins a
+      transaction on its first statement (also a read) and rolls it back when it closes uncommitted.
+    - A pooled connection moves between threads from one input to the next (made by one thread, checked
+      out by another, closed by a third): drivers with DB-API `threadsafety` 2 (psycopg, oracledb) and
+      sqlite3 with `check_same_thread=False` (SQLAlchemy's default for SQLite) allow it. Within one input
+      it stays put: an io_stage runs all items of an iterator on the thread that opened it.
+    - Bound every wait: `sqlite3.connect(timeout=...)`, `statement_timeout`, `pool_timeout`.
 
 3. Reference
 ============
@@ -142,10 +210,14 @@ Repeating until done:
 Semantics:
   * A stage maps each input to a bag of outputs (1:0..n); a run applies it to every item of its
     inputs, and its outputs are the union of those bags. Composition `|` is associative with
-    identity() as neutral element.
-  * Correspondences: Stage[I, O] is conduit's ConduitT i o m () and pipes' Pipe; stream(stage,
-    inputs) with its consumer is runConduit (yieldMany inputs .| stage .| consumer), a fold such as
-    sinkList the consumer's code. product is Haskell's `***`, route `+++` (ArrowChoice).
+    identity() as neutral element: where the parentheses of a chain stand makes no difference to
+    its outputs.
+  * Correspondences, for readers of Haskell: Stage[I, O] corresponds to conduit's ConduitT i o m ()
+    and pipes' Pipe; stream(stage, inputs) with its consumer to runConduit (yieldMany inputs .| stage
+    .| consumer), a fold such as sinkList being the consumer's code; product to `***` and route to
+    `+++` (ArrowChoice). Where they end: the outputs are a bag, not a sequence; a stage's function
+    gets one input, never the stream; and where `***` of two functions gives one pair, product gives
+    every pair of the branches' outputs.
   * Laws of stages equate outputs (as bags), not calls: product(f, g) calls g once per input,
     first(f) | second(g) once per output of f.
 
@@ -176,30 +248,10 @@ Resources vs. concurrency:
     back never waits, so the loop cannot block itself.
   * A step's task receives its input item first and only then submits to the pool, so idle
     tasks never occupy pool capacity.
-  * Connection pools as worker handles (SQLAlchemy, psycopg's pool; for a driver without a pool, such
-    as sqlite3, a small thread-safe pool of your own with `check_same_thread=False`):
-        @contextmanager
-        def engine_of() -> Iterator[Engine]:
-            engine = create_engine(URL, pool_size=8, pool_timeout=5)
-            try:
-                yield engine
-            finally:
-                engine.dispose()
-
-        def store(engine: Engine, row: Row) -> Iterator[int]:
-            with engine.begin() as conn:  # a checkout and a transaction per input
-                conn.execute(INSERT, row._asdict())
-            yield row.id                  # emitted after the commit
-    - No checkout may wait: a waiting checkout blocks a pool thread. A pool that grows on demand never
-      waits; a bounded one lends at least the sum of the `concurrency` of the steps using it, over the
-      runs at the same time (`pool_size=1` suffices in a "cpu" worker process running one call at once).
-    - A transaction per input, in `fn`, outputs after the commit: a SQLAlchemy `Connection` begins a
-      transaction on its first statement (also a read) and rolls it back when it closes uncommitted.
-    - A pooled connection moves between threads from one input to the next (made by one thread, checked
-      out by another, closed by a third): drivers with DB-API `threadsafety` 2 (psycopg, oracledb) and
-      sqlite3 with `check_same_thread=False` (SQLAlchemy's default for SQLite) allow it. Within one input
-      it stays put: an io_stage runs all items of an iterator on the thread that opened it.
-    - Bound every wait: `sqlite3.connect(timeout=...)`, `statement_timeout`, `pool_timeout`.
+  * Pool tasks: io_stage takes one per item of an iterator (the first also calls fn) and one finding
+    the end, all on the thread that opened it; a list or a tuple has nothing to stream and comes
+    whole, in the one pool task that calls fn. cpu_stage takes one per input, for all items of
+    fn(item).
   * Use a `Pools` within one event loop; several runs at once in it share its pools. At the end of
     the `Pools.open` or `Pools.open_on` block, each backend closes without blocking the event loop, also
     when the block is cancelled: the built-in ones cancel pool tasks not yet started and wait for

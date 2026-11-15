@@ -1,8 +1,8 @@
 # Factories
 
-Stages per placement (the user guide's factory table); stages are 1:0..n; no sinks, no `Void`, no source factories: an
-effect is a stage returning nothing (or what it did) or the consumer's code; items made by a blocking or async function
-come from a stage of it on one input or from async inputs
+There is a factory per placement (the user guide's factory table), and every stage is 1:0..n. There are no sinks, no
+`Void` and no source factories: an effect is a stage returning nothing (or what it did), or the consumer's code, and
+items made by a blocking or async function come from a stage of it on one input, or from async inputs.
 
 **Rejected**
 

@@ -38,15 +38,8 @@ is public in one of them only; apart from `strom.testing`, they only re-export f
 ## Packages
 
 The private packages of `src/strom` by role, bottom-up: each imports only from those above it (see
-`docs/decisions/module-structure.md`; `tests/test_packages.py` checks it). Terms: `GLOSSARY.md`.
-
-Module layout: packages by role (the layers below), modules inside a package by feature. A feature its consumers use (a
-backend, worker handles, `Pools`) is one module, or one sub-package, holding everything only it needs (the process
-backend holds its worker processes); code several features share is a module of its own, named after its concept (the
-backend contract `backends`, the `iterator_registry`, the `pinning_pool`, the handle core in `worker_handles`), never a
-"common" or "utils" grab-bag. New code goes into the feature it serves; when a second feature needs it, it moves out
-into a module of its own. A sub-package's docstring states the import order of its modules (a slice may span several
-levels of its package). Module names: Naming.
+`docs/decisions/module-structure.md`; `tests/test_packages.py` checks it). Terms: `GLOSSARY.md`. Where new code goes:
+Conventions, Code (module layout).
 
 - `_validation`: value constraints
 - `_closing`: closing iterators that may be closable
@@ -65,7 +58,7 @@ levels of its package). Module names: Naming.
       `close_process_handle`, `close_all_process_handles`
   - a slice per backend, each with its config, composed of the shared parts (no backend inherits from another):
     - `executor_backend`: `ExecutorBackend`, `FromExecutor`; the lifetime of the user's executor
-    - `thread_backend`: `ThreadBackend`, `Threads`; its worker, a thread with an iterator registry of its own
+    - `thread_backend`: `ThreadBackend`, `Threads`; its worker, a thread with its own iterator registry
     - `process_backend`: `ProcessBackend`, `Processes`; its worker, a child process behind a pool thread, and the
       child's main function `serve`
   - on top:
@@ -91,15 +84,15 @@ compare with it via `strom.testing.evaluate`).
 
 ## Tools
 
-The development tools are a package of their own, `strom_tools` in `tools/`: what the scripts in `bin/` and the Claude
-Code hooks run (`.claude/hooks/dispatch.py`), each a wrapper of a few lines. It ships in no wheel, imports only the
-standard library (never `strom`: the hooks run without the venv, and a tool has to work while the library is broken) and
-follows the conventions below, with the library's checker settings. Its guide is the package's docstring
+The development tools are a separate package, `strom_tools` in `tools/`: what the scripts in `bin/` and the Claude Code
+hooks run (`.claude/hooks/dispatch.py`), each a wrapper of a few lines. It ships in no wheel, imports only the standard
+library (never `strom`: the hooks run without the venv, and a tool has to work while the library is broken) and follows
+the conventions below, with the library's checker settings. Its guide is the package's docstring
 (`tools/strom_tools/__init__.py`): the layers and their import order, and how a tool or a hook is added.
 
 - foundations: `tool_error` (`ToolError`, what a tool could not do), `json_objects` (JSON narrowed without `Any`)
 - `workspace`: the repository as a value (`Repository`), every call of git and of make, and every process a tool starts
-  (`processes`: in a group of its own that a timeout kills, its outcome a `ProcessRun`)
+  (`processes`: in its own group, which a timeout kills, its outcome a `ProcessRun`)
 - the tools, which import nothing of each other: `change_checks` (skill `validate-change`), `example_scripts`,
   `docs_check`, `renames`, `sessions`, `outlines`
 - entry points: `hooks` (the handlers and their dispatcher) and `commands` (one per script); only they read arguments or
@@ -127,35 +120,38 @@ What the code doesn't show at a glance. The decisions in `docs/decisions/` refer
 
 **Concurrency and pools**
 
-- Step tasks release pool capacity before putting outputs (and take inputs first, see the user guide): no deadlocks
-  between steps (graphs are linear plus the bounded join).
-- A run reaches its pools only through `RunBackends` (in `RunContext`, from `backends_of(pools)`), and its offloader
-  knows backends only through their interface (`strom.backends`). A backend knows nothing of runs: what a run adds to a
-  pool task wraps the function it passes (`strom._interpreters.offloaders`): `_guarded` skips it once the run's
-  `FailureFlag` is set (a thread sees the flag, a worker in another process the copy pickled with the task), `_timed`
-  measures it. Of `concurrent.futures` only `executor_backend` runs on an executor.
-- The streaming interpreter sees two offloader operations, named like the ItemFn builders: `listed` (all items of a
-  `cpu_stage` function in one pool task) and `streamed` (`io_stage`). `streamed` hands a list or a tuple over whole and
-  keeps an iterator in its pool worker (`strom._runtime.iterator_registry`) under the run's scope (`RunScope`); the
-  runner releases the scope at the run's end (`StreamingBackend.release`): one release for every iterator left, whether
-  stopped early, never received or dropped after a recorder error. Measuring is a decorator over the pool calls
-  (`PoolCalls`, `_Measured`). A registry holds its iterators strongly, so a missed release would leak: a pool thread
-  checks at its end that its registry is empty (the close of the pools fails otherwise), a test fixture the registry of
-  the process.
-- The built-in workers are addressable (`PinningPool`): a pool thread takes the calls pinned to it and the unpinned ones
-  in the order they arrived, so "on that worker, after what it runs now" is an ordinary call: every later call of an
-  `io_stage` iterator (`affinity`), the release of a scope and the close of a worker handle (cleanups, pinned to every
-  thread and never dropped: the shutdown runs those still queued). A process worker is such a thread forwarding its
-  calls to a child process of its own over a pipe; the calls wait in this process, and a crash breaks one worker.
-- Worker handles add no leaf: `using` returns an ordinary function (`Using`), so fusion, lifting, both interpreters and
-  the offloader run it unchanged; only the backends know handles (`init_handles`, `Backend.close_handle`). Setup: the
-  thread mark `init_handles` (a pool thread of `Threads`, the main thread of a worker process); teardown at the block's
-  end in two phases, refuse then drain and close (`strom._runtime.worker_handles.worker_handle`). On `Processes` the
-  close is the cleanup `close_process_handle`; a call is pickled when its thread takes it, so one that uses the handle
-  after the refusal fails in this process, and one pickled before runs ahead of the close.
-- Process backend (observed): forkserver start method; first use costs about 0.3 s once per interpreter, later `Pools`
-  about 10 ms; a worker process starts at the first call of its pool thread; it imports the module of the function it
-  runs (in tests: a test module or `helpers`, with pytest and hypothesis).
+- **Capacity.** Step tasks release pool capacity before putting outputs (and take inputs first, see the user guide): no
+  deadlocks between steps (graphs are linear plus the bounded join).
+- **Runs and backends.** A run reaches its pools only through `RunBackends` (in `RunContext`, from
+  `backends_of(pools)`), and its offloader knows backends only through their interface (`strom.backends`). A backend
+  knows nothing of runs: what a run adds to a pool task wraps the function it passes (`strom._interpreters.offloaders`):
+  `_guarded` skips it once the run's `FailureFlag` is set (a thread sees the flag, a worker in another process the copy
+  pickled with the task), `_timed` measures it. Of `concurrent.futures` only `executor_backend` runs on an executor.
+- **Offloader.** The streaming interpreter sees two offloader operations, named like the ItemFn builders: `listed` (all
+  items of a `cpu_stage` function in one pool task) and `streamed` (`io_stage`). Measuring is a decorator over the pool
+  calls (`PoolCalls`, `_Measured`).
+- **Iterators and scopes.** `streamed` hands a list or a tuple over whole and keeps an iterator in its pool worker
+  (`strom._runtime.iterator_registry`) under the run's scope (`RunScope`). The runner releases the scope at the run's
+  end (`StreamingBackend.release`): one release for every iterator left, whether stopped early, never received or
+  dropped after a recorder error. A registry holds its iterators strongly, so a missed release would leak: a pool thread
+  checks at its end that its registry is empty (the close of the pools fails otherwise), and a test fixture checks the
+  registry of the process.
+- **Addressable workers.** The built-in workers are addressable (`PinningPool`): a pool thread takes the calls pinned to
+  it and the unpinned ones in the order they arrived, so "on that worker, after what it runs now" is an ordinary call:
+  every later call of an `io_stage` iterator (`affinity`), the release of a scope and the close of a worker handle
+  (cleanups, pinned to every thread and never dropped: the shutdown runs those still queued). A process worker is such a
+  thread forwarding its calls to its own child process over a pipe; the calls wait in this process, and a crash breaks
+  one worker.
+- **Worker handles.** They add no leaf: `using` returns an ordinary function (`Using`), so fusion, lifting, both
+  interpreters and the offloader run it unchanged; only the backends know handles (`init_handles`,
+  `Backend.close_handle`). Setup: the thread mark `init_handles` (a pool thread of `Threads`, the main thread of a
+  worker process); teardown at the block's end in two phases, refuse then drain and close
+  (`strom._runtime.worker_handles.worker_handle`). On `Processes` the close is the cleanup `close_process_handle`; a
+  call is pickled when its thread takes it, so one that uses the handle after the refusal fails in this process, and one
+  pickled before runs ahead of the close.
+- **Process backend, observed.** The start method is forkserver; first use costs about 0.3 s once per interpreter, later
+  `Pools` about 10 ms; a worker process starts at the first call of its pool thread; it imports the module of the
+  function it runs (in tests: a test module or `helpers`, with pytest and hypothesis).
 
 **Failures**
 
@@ -182,6 +178,13 @@ What the code doesn't show at a glance. The decisions in `docs/decisions/` refer
   `src/` and `tools/`.
 - Functional style: stages are pure data, behaviour lives in module-level interpreter functions and in functions stored
   in the stages. A stage kind's only method rebuilds it (`Focused.with_focus`): it runs nothing.
+- Module layout: packages by role (the layers of Packages), modules inside a package by feature. A feature its consumers
+  use (a backend, worker handles, `Pools`) is one module, or one sub-package, holding everything only it needs (the
+  process backend holds its worker processes). Code several features share is a separate module, named after its concept
+  (the backend contract `backends`, the `iterator_registry`, the `pinning_pool`, the handle core in `worker_handles`),
+  never a "common" or "utils" grab-bag. New code goes into the feature it serves; when a second feature needs it, it
+  moves out into a separate module. A sub-package's docstring states the import order of its modules (a slice may span
+  several levels of its package). Module names: Naming.
 - An optional feature must cost nothing when it is off.
 - Terms follow `GLOSSARY.md` (one term per concept; new terms go there).
 - No numbers that go stale with ordinary edits in docs, docstrings or comments (counts of lines, tests or exports;
@@ -214,19 +217,32 @@ What the code doesn't show at a glance. The decisions in `docs/decisions/` refer
   the kinds in the order `strom._stages.model` defines them (`Step`, `FocusedStep`, `Chain`, `Join`, `Route`, `Gather`,
   `Loop`); the liftings match every kind that holds a focus in one arm (`Focused`: `_lift_first_focused`). Private stage
   constructors are `_make_<thing>`.
-- Closures: an ItemFn is `item_fn`, the ItemFn it wraps `inner_item_fn`, that of a focused step's leaf `leaf_item_fn`;
-  in the reference interpreter, the evaluator of a part is `run_<part>` and the per-item function `evaluate`.
-- Variables: `out` one output, `outs` the async generator of a step's outputs for one input, `outputs` a list of them or
-  a run's outputs (the async iterator of `stream`); `stage` a stage (descriptive names such as `pairs` stay); `inputs` a
-  run's inputs; `step` a `Step`, `step_id` a `StepId`, `step_stats` a `StepStats`; `pools` a `Pools`; `fn` the user's
-  function. A queue ends in `q` (`inq`, `outq`, `left_inq`); task groups are `tg`, a nested one `inner_tg`; an asyncio
-  task object is `<what>_task`.
+- Closures:
+  - `item_fn`: an ItemFn; `inner_item_fn`: the ItemFn it wraps; `leaf_item_fn`: that of a focused step's leaf;
+  - `run_<part>`: in the reference interpreter, the evaluator of a part; `evaluate`: its per-item function.
+- Variables:
+  - `out`: one output;
+  - `outs`: the async generator of a step's outputs for one input;
+  - `outputs`: a list of them, or a run's outputs (the async iterator of `stream`);
+  - `stage`: a stage (descriptive names such as `pairs` stay);
+  - `inputs`: a run's inputs;
+  - `step`: a `Step`; `step_id`: a `StepId`; `step_stats`: a `StepStats`;
+  - `pools`: a `Pools`;
+  - `fn`: the user's function;
+  - `inq`, `outq`, `left_inq`: queues, which end in `q`;
+  - `tg`: a task group; `inner_tg`: a nested one;
+  - `<what>_task`: an asyncio task object.
 - Times: a point in time ends in `_at` (`started_at`), a duration in seconds in `_time` (`busy_time`). Counts start with
   `num_` (`num_items_in`); configured sizes and limits are not counts (`cpu_workers`, `concurrency`, `buffer_size`).
 - Notation: `1:1` and `1:0..n` for outputs per input.
-- Type parameters: `I`/`O` input and output of a stage (`_I`/`_O` with declared variance in `Stage`, `_R` the output of
-  the stage after `|`), `M` a chain's middle; `A`/`B` input and output of a leaf or wrapped ItemFn; in a join or a route
-  `A -> B` the left and `C -> D` the right branch, `T` a join's kept value; in a gather or a loop `A -> B` its body (a
-  loop's body emits `Left[A] | Right[B]`); `K` the kept value of a focus (also of the stages holding one), and
-  `I2`/`O2`/`K2` those of the focus a stage is rebuilt with (`with_focus`); `X` a passed-through element; otherwise `T`
-  an element of any type.
+- Type parameters:
+  - `I`, `O`: input and output of a stage (`_I`, `_O` with declared variance in `Stage`; `_R`: the output of the stage
+    after `|`);
+  - `M`: a chain's middle;
+  - `A`, `B`: input and output of a leaf or wrapped ItemFn; `A -> B` is the left branch of a join or a route, and the
+    body of a gather or a loop (a loop's body emits `Left[A] | Right[B]`);
+  - `C`, `D`: `C -> D` is the right branch of a join or a route;
+  - `T`: a join's kept value; otherwise an element of any type;
+  - `K`: the kept value of a focus, also of the stages holding one;
+  - `I2`, `O2`, `K2`: those of the focus a stage is rebuilt with (`with_focus`);
+  - `X`: a passed-through element.

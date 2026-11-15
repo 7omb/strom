@@ -1,14 +1,20 @@
 # Recorder
 
-Events as data (a recorder's error ends the run like a user's error and never hides the run's own error):
-`Recorder = Callable[[Event], None]`, `StatsRecorder` a fold, `combine_recorders` a fan-out; fixed clocks, not
-parameters (2026-11-07): `time.perf_counter` on the event loop and for durations in pool workers, `time.thread_time` for
-CPU time; the tests check the partition by the chain of readings (each `wait_started_at` is the previous `ended_at`) and
-the folded totals with `math.isclose`, and times by lower bounds of intentional sleeps. A recorder whose `RunStarted`
-returned gets exactly one `RunFinished`, one that raised none; `combine_recorders` keeps that for its children like
-`ExitStack` (2026-11-06). `StatsRecorder` is single-use (a second `RunStarted` raises, failing that run at its start;
-`stats()` only after `RunFinished`, 2026-11-06). The contract (no blocking, own I/O errors, events may grow) is the
-`Recorder` docstring
+A recorder is a function of an event, `Recorder = Callable[[Event], None]`: the events are data, `StatsRecorder` is a
+fold and `combine_recorders` a fan-out. The contract (no blocking, own I/O errors, events may grow) is the `Recorder`
+docstring.
+
+Decided with it:
+
+- A recorder's error ends the run like a user's error and never hides the run's own error.
+- The clocks are fixed, not parameters: `time.perf_counter` on the event loop and for durations in pool workers,
+  `time.thread_time` for CPU time. The tests check the partition by the chain of readings
+  (`docs/decisions/event-classes.md`), the folded totals with `math.isclose`, and times by lower bounds of intentional
+  sleeps.
+- A recorder whose `RunStarted` returned gets exactly one `RunFinished`, one that raised gets none; `combine_recorders`
+  keeps that for its children, like `ExitStack`.
+- `StatsRecorder` is single-use: a second `RunStarted` raises, failing that run at its start, and `stats()` works only
+  after `RunFinished`.
 
 **Rejected**
 

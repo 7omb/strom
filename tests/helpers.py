@@ -469,7 +469,7 @@ async def outputs_of[I, O](
 RUN_LIMIT_TIME = 5.0
 """Seconds that a run of a sync test may take (`_run_alone`): a stalled run then fails its Hypothesis example, which
 shrinks to a minimal pipeline, instead of hanging until pytest-timeout ends the process. Each shrink of a stall waits
-this long: far below that timeout (`docs/decisions/test-settings.md`)."""
+this long: far below that timeout (`docs/decisions/test-timeouts.md`)."""
 
 
 def _run_alone[I, O](

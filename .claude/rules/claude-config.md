@@ -15,3 +15,8 @@ paths:
   every tool call, so a module of its import chain that does not import makes every hook fail (reported, never blocking)
   until it is fixed. Test a changed handler on a recorded event first:
   `echo '{"hook_event_name": "Stop", "stop_hook_active": true}' | python3 .claude/hooks/dispatch.py; echo $?`.
+- Subagents (2026-11-14): a definition written to `.claude/agents/` reaches a running session, but not at once
+  (2026-11-15: a session that had started before the file existed got "Agent type 'researcher' not found" and the type
+  some turns later, when Claude Code listed it as new). Until then a general-purpose agent that is told to read the
+  definition first stands in. Claude Code starts a subagent only where the user, `CLAUDE.md` or a skill names it. Its
+  tool calls run the same hooks (`strom_tools.hooks.rules_loading`).

@@ -26,8 +26,8 @@ ORDER = {
         {"revisions", "line_diffs", "snapshots"},
         {"benchmark_comparison", "typing_diagnostics", "collected_ids", "mutants", "make_checks"},
     ],
-    "sessions": [{"transcripts"}, {"friction"}],
-    "docs_check": [{"doc_lines"}, {"rule_notes"}, {"doc_problems"}],
+    "sessions": [{"transcripts"}, {"friction", "token_usage", "tool_usage"}],
+    "docs_check": [{"doc_lines"}, {"rule_notes", "passages"}, {"decision_form", "prose_counts"}, {"doc_problems"}],
     "hooks": [
         {"hook_events", "memos"},
         {"hook_results"},

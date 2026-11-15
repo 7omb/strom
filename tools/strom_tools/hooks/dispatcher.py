@@ -10,7 +10,7 @@ run its targets (`make fix`, `make lint-python`, `make lint-docs`), as the git h
   PostToolUse Bash                     `rules_loading.after_bash`: load the `.claude/rules` a command touched
   Stop                                 `python_fixes.at_stop`: fix and lint every changed Python file
                                        `docs_fixes.at_stop`: format the changed Markdown files, check the docs
-                                       `friction_notes.at_stop`: say when the session's context was summarised
+                                       `friction_notes.at_stop`: say when the context was summarised or is large
   SessionStart                         `friction_notes.at_start`: suggest the skill `retro` after much friction
                                        `rules_loading.at_start`: after a summary, forget the rules it added
                                        `context_notes.at_start`: after a summary, the plans and changed files
@@ -21,7 +21,7 @@ A handler takes the repository and its event and returns a `HookResult` (`hook_r
 event runs; one that raises is reported and never blocks.
 
 The hook command runs at every tool call, so a table is a function that imports the modules of its handlers: an
-event loads only its own (`docs/decisions/tool-package.md`)."""
+event loads only its own (`docs/decisions/hook-command.md`)."""
 
 import sys
 from collections.abc import Callable, Sequence

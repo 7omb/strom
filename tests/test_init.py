@@ -1,14 +1,17 @@
-"""Tests of the package as users see it: the public interface, and the example of `README.md`."""
+"""Tests of the package as users see it: the public interface, the example of `README.md` and those of the user
+guide."""
 
 import subprocess
 import sys
+import textwrap
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from helpers import readme_example
+from helpers import ROOT, neg, readme_example
 
 import strom as P
-from strom import backends, metrics
+from strom import backends, metrics, testing
 
 
 def test_api_requires_explicit_values() -> None:
@@ -116,4 +119,69 @@ def test_the_readme_example_runs(tmp_path: Path) -> None:
     assert done.returncode == 0, done.stderr
     *values, total = done.stdout.splitlines()
     assert len(values) == 20, "one per input"
-    assert total == f"total: {sum(map(int, values))}"
+    assert total == f"total: {sum(map(int, values))}" == "total: 14960", "as the user guide says"
+
+
+def test_the_quick_start_of_the_user_guide_shows_the_readme_example(tmp_path: Path) -> None:
+    example = readme_example(tmp_path).read_text(encoding="utf-8")
+    assert textwrap.indent(example, "    ") in (P.__doc__ or "")
+    for text in (P.__doc__ or "", (ROOT / "README.md").read_text(encoding="utf-8")):
+        assert "`total: 14960`" in text, "the output that both state"
+
+
+def upto(n: int) -> Iterator[int]:
+    yield from range(1, n + 1)
+
+
+def letters(text: str) -> Iterator[str]:
+    yield from text
+
+
+def halves(n: int) -> Iterator[int]:
+    yield n // 2
+
+
+def is_even(n: int) -> bool:
+    return n % 2 == 0
+
+
+def shown(item: object) -> str:
+    """An item as the user guide writes it: a tag without the name of its field."""
+    match item:
+        case P.Left(value):
+            return f"Left({shown(value)})"
+        case P.Right(value):
+            return f"Right({shown(value)})"
+        case _:
+            return repr(item)
+
+
+def guide_line[I, O](call: str, stage: P.Stage[I, O], inputs: list[I], outputs: list[O], remark: str = "") -> str:
+    """The line of the user guide for a stage on these inputs, once the reference semantics gave these outputs."""
+    assert testing.bag(testing.evaluate(stage, inputs)) == testing.bag(outputs), call
+    return f"{call} {', '.join(map(repr, inputs))} => {' '.join(map(shown, outputs)) or 'nothing'}{remark}"
+
+
+def test_the_examples_of_the_user_guide_give_the_outputs_it_shows() -> None:
+    lifted: P.Stage[tuple[int, str], tuple[int, str]] = P.first(P.stage(upto))
+    pairs = P.product(P.stage(upto), P.stage(letters))
+    twice: P.Stage[int, tuple[int, int]] = P.duplicate()
+    tags: list[P.Left[int] | P.Right[int]] = [P.Left(2), P.Right(-5)]
+    dropped = ": a branch without outputs drops the input"
+    lines = [
+        guide_line("first(upto)", lifted, [(2, "x")], [(1, "x"), (2, "x")]),
+        guide_line("product(upto, letters)", pairs, [(2, "ab")], [(1, "a"), (1, "b"), (2, "a"), (2, "b")]),
+        guide_line("product(upto, letters)", pairs, [(2, "")], [], dropped),
+        guide_line(
+            "duplicate() | product(upto, neg)", twice | P.product(P.stage(upto), P.stage(neg)), [2], [(1, -2), (2, -2)]
+        ),
+        guide_line(
+            "tag_by(is_even) | route(halves, neg)",
+            P.tag_by(is_even) | P.route(P.stage(halves), P.stage(neg)),
+            [4, 5],
+            tags,
+        ),
+        guide_line("gather(upto)", P.gather(P.stage(upto)), [3, 0], [[1, 2, 3], []]),
+    ]
+    in_the_guide = [" ".join(line.split()) for line in (P.__doc__ or "").splitlines() if "=>" in line]
+    assert in_the_guide == lines, "every example line of the guide, and no other"

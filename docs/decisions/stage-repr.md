@@ -1,11 +1,10 @@
 # Stage repr
 
-`<Stage 'name' (step: settings; ...)>`: the name and the settings that differ from the defaults (placement,
-`concurrency`, `buffer_size`) of each step occurrence and combinator, in order (`display.settings`); Hypothesis prints
-failing stages with it
+The repr of a stage is `<Stage 'name' (step: settings; ...)>`: its name and, for each step occurrence and combinator in
+order, the settings that differ from the defaults (placement, `concurrency`, `buffer_size`; `display.settings`).
+Hypothesis prints failing stages with it, so a failing generated stage shows its placement and concurrency.
 
 **Rejected**
 
 - the generated dataclass repr (internal kinds, focuses, function addresses: 573 characters for three steps)
-- the name only (a failing generated stage would not show its placement and concurrency)
 - a repr rebuilt from the structure (ignores names users give)

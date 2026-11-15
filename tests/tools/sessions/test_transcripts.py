@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from tool_helpers import write_transcript
+from tool_helpers import assistant_record, user_record, write_transcript
 
 from strom_tools.sessions.transcripts import (
     Author,
@@ -19,11 +19,15 @@ from strom_tools.sessions.transcripts import (
     ToolResult,
     ToolUse,
     _transcripts_dir,
+    answer,
+    chosen,
     find,
     loaded_natively,
     minute,
     prompts,
     records,
+    subagent_transcript,
+    subagent_transcripts,
     summaries,
     texts,
     title,
@@ -36,11 +40,11 @@ AT = datetime(2026, 11, 1, 10, 0, tzinfo=UTC)
 
 
 def user(text: object, at: str = "2026-11-01T10:00:00.000Z", **more: object) -> dict[str, object]:
-    return {"type": "user", "timestamp": at, "message": {"role": "user", "content": text}, **more}
+    return user_record(text, at, **more)
 
 
 def assistant(*blocks: object, at: str = "2026-11-01T10:00:05.000Z") -> dict[str, object]:
-    return {"type": "assistant", "timestamp": at, "message": {"role": "assistant", "content": list(blocks)}}
+    return assistant_record(*blocks, at=at)
 
 
 def test_the_transcripts_of_a_repository_are_in_the_directory_named_after_its_path(
@@ -59,15 +63,31 @@ def test_the_transcripts_of_a_repository_are_in_the_directory_named_after_its_pa
     for prefix, count in (("a", 2), ("zz", 0)):
         with pytest.raises(ToolError, match=f"{count} sessions start with '{prefix}'"):
             find(repository, prefix)
+    assert [path.stem for path in chosen(repository, ["ab", "bb"], 1)] == ["abcd-3", "bbbb-2"]
+    assert [path.stem for path in chosen(repository, [], 2)] == ["aaaa-1", "abcd-3"], "the last ones"
 
 
-def test_records_are_those_of_the_main_conversation_the_tools_read(tmp_path: Path) -> None:
+def test_a_subagent_has_a_transcript_of_its_own_beside_its_session(tmp_path: Path) -> None:
+    path = write_transcript(tmp_path / "abcd.jsonl", [])
+    assert subagent_transcripts(path) == [], "no subagent, no directory"
+    first, second = subagent_transcript(path, "a1"), subagent_transcript(path, "a2")
+    assert first == tmp_path / "abcd" / "subagents" / "agent-a1.jsonl"
+    first.parent.mkdir(parents=True)
+    for number, transcript in enumerate([second, first]):
+        write_transcript(transcript, [{**user("review this"), "isSidechain": True}])
+        os.utime(transcript, (1000 + number, 1000 + number))
+    (first.parent / "agent-a1.meta.json").write_text("{}")
+    assert subagent_transcripts(path) == [second, first], "oldest first"
+    assert list(records(first)) == [Message(AT, Author.USER, Origin.CONVERSATION, [Text("review this")])]
+
+
+def test_records_are_those_the_tools_read(tmp_path: Path) -> None:
     path = tmp_path / "session.jsonl"
     path.write_text(
         '{"type": "user", "timestamp": "2026-11-01T10:00:00.000Z"}\n'
         "not json\n"
         '["a", "list"]\n'
-        '{"type": "assistant", "isSidechain": true}\n'
+        '{"type": "api-request-blob", "message": {"content": "a message again"}}\n'
         '{"type": "summary"}\n'
         '{"type": "system", "subtype": "compact_boundary", "timestamp": "no time"}\n'
         '{"type": "assistant", "timestamp": "2026-11-01T11:00:00.000Z"}\n'
@@ -85,6 +105,7 @@ def test_records_are_those_of_the_main_conversation_the_tools_read(tmp_path: Pat
 def test_a_message_holds_its_text_tool_use_and_tool_result_blocks(tmp_path: Path) -> None:
     edit = {"type": "tool_use", "id": "t1", "name": "Edit", "input": {"file_path": "/a.py", "old_string": "x"}}
     bash = {"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": "make", "timeout": 5}}
+    agent = {"type": "tool_use", "id": "t3", "name": "Agent", "input": {"subagent_type": "reviewer"}}
     result = {
         "type": "tool_result",
         "tool_use_id": "t2",
@@ -94,7 +115,7 @@ def test_a_message_holds_its_text_tool_use_and_tool_result_blocks(tmp_path: Path
         tmp_path / "session.jsonl",
         [
             user("a prompt"),
-            assistant({"type": "text", "text": "an answer"}, "stray", {"type": "thinking"}, edit, bash),
+            assistant({"type": "text", "text": "an answer"}, "stray", {"type": "thinking"}, edit, bash, agent),
             user([result, {"type": "tool_result", "tool_use_id": "t1", "content": "failed", "is_error": True}]),
             user("injected", isMeta=True),
             user("the context so far", isCompactSummary=True),
@@ -109,8 +130,9 @@ def test_a_message_holds_its_text_tool_use_and_tool_result_blocks(tmp_path: Path
             Origin.CONVERSATION,
             [
                 Text("an answer"),
-                ToolUse("t1", "Edit", None, "/a.py", "{'file_path': '/a.py', 'old_string': 'x'}"),
-                ToolUse("t2", "Bash", "make", None, "{'command': 'make', 'timeout': 5}"),
+                ToolUse("t1", "Edit", None, "/a.py", None, "{'file_path': '/a.py', 'old_string': 'x'}"),
+                ToolUse("t2", "Bash", "make", None, None, "{'command': 'make', 'timeout': 5}"),
+                ToolUse("t3", "Agent", None, None, "reviewer", "{'subagent_type': 'reviewer'}"),
             ],
         ),
         (Author.USER, Origin.CONVERSATION, [ToolResult("t2", "two parts", False), ToolResult("t1", "failed", True)]),
@@ -170,6 +192,33 @@ def test_prompts_are_what_the_user_typed(tmp_path: Path) -> None:
     everything = [(said.author, said.text) for said in texts(path, everything=True)]
     assert (Author.ASSISTANT, "an answer") in everything and (Author.USER, "a summary of the context") in everything
     assert (Author.USER, "injected") not in everything
+
+
+def test_the_answer_to_a_prompt_is_the_last_text_before_the_next_prompt(tmp_path: Path) -> None:
+    later, last = "2026-11-01T12:34:56.000Z", "2026-11-02T08:00:00.000Z"
+    call = {"type": "tool_use", "id": "t1", "name": "Bash", "input": {"command": "make"}}
+    path = write_transcript(
+        tmp_path / "session.jsonl",
+        [
+            user("the first prompt"),
+            assistant({"type": "text", "text": "I'll look."}, call),
+            user([{"type": "tool_result", "tool_use_id": "t1", "content": "a result"}]),
+            user("a summary of the context", isCompactSummary=True),
+            assistant({"type": "text", "text": "The first answer."}, {"type": "text", "text": " \n"}),
+            {**assistant({"type": "text", "text": "API Error: no response"}), "isApiErrorMessage": True},
+            user("the second prompt", at=later),
+            assistant(call),
+            user("the third prompt", at=last),
+            assistant({"type": "text", "text": "The third answer."}, at=last),
+        ],
+    )
+    answered_at = datetime.fromisoformat("2026-11-01T10:00:05.000Z")
+    assert answer(path, "2026-11-01T10:00") == Said(answered_at, Author.ASSISTANT, "The first answer.")
+    assert answer(path, "2026-11-02").text == "The third answer."
+    assert answer(path, "2026").text == "The first answer.", "the first prompt of several"
+    for asked_at in ("2026-11-01T12:34", "2026-11-03"):  # no text followed; no prompt then
+        with pytest.raises(ToolError, match=f"no answer to a prompt typed at '{asked_at}'"):
+            answer(path, asked_at)
 
 
 def test_a_time_is_shown_to_the_minute() -> None:

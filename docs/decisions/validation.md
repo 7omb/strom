@@ -1,8 +1,8 @@
 # Validation
 
-No pydantic; frozen dataclasses with `__post_init__` checks
+Value constraints are checked in the `__post_init__` of frozen dataclasses, without pydantic, because pydantic is a
+dependency and blocked the interpreter backend.
 
 **Rejected**
 
-- pydantic (dependency, blocked the interpreter backend)
-- runtime type checks
+- runtime type checks (the type checker's job: `ARCHITECTURE.md`, Conventions)

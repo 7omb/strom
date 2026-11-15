@@ -1,7 +1,8 @@
 # Law rewrites
 
-Only call-preserving ones: `first(f) | first(g) -> first(f | g)`, `product(f, identity()) -> first(f)` (same calls on
-both interpreters, 2026-11-01)
+A law serves as a rewrite only if it preserves the calls, because the laws equate output bags, not calls
+(`ARCHITECTURE.md`, Semantics). `first(f) | first(g) -> first(f | g)` and `product(f, identity()) -> first(f)` do: they
+make the same calls on both interpreters (2026-11-01).
 
 **Rejected**
 

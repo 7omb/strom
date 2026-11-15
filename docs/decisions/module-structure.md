@@ -1,39 +1,44 @@
 # Module structure
 
-Private packages by role, importing one way; inside a package modules by feature, each named after its one concept
-(2026-11-09): a feature its consumers use is one module or sub-package with everything only it needs, and code that
-several features share is a module of its own. The rules and the layout they give: `ARCHITECTURE.md`, Packages and
-Naming. Decided with it:
+The private packages are split by role and import one way; inside a package the modules are split by feature, each named
+after its one concept. A feature its consumers use is one module or sub-package with everything only it needs, and code
+that several features share is a separate module. The rules are in `ARCHITECTURE.md`, Conventions (module layout,
+Naming), the layout they give in its Packages.
 
-- factories (from user functions or none: also `tag_by`, `duplicate`) apart from combinators (from stages, 2026-11-06);
-- join, route, gather and loop stay in `streaming` with the dispatcher they recurse into (a module of their own would
-  import it back), and `Stage.__repr__` imports `display` when called (`display` matches on the kinds);
-- `RunFailed`/`run_failed` in `_interpreters.failures` (the runner and `strom.testing` both use them);
-- how a run uses the pools (`offloaders`) is a module of `_interpreters` (2026-11-11): `_runtime` imports nothing of
-  `_metrics` and knows no runs, and the reference semantics imports nothing of `_runtime`;
-- in `_runtime` a slice per backend, named after its backend class, with its config beside it; a backend is composed of
-  parts, final, and implements the contract directly: none inherits from another (2026-11-09,
-  `docs/research/dependency_injection.md`, D1);
-- a sub-package's `__init__` holds only a docstring (one import path per name): so `_runtime.worker_handles` spans two
-  levels of `_runtime` without a cycle;
-- privacy by namespace (2026-11-05; the rule: `ARCHITECTURE.md`, Conventions): a module exports a function for what
-  others need from its internals (`check_open`, not the message constant), and tests import internals from their
-  modules;
-- classes report their module: mypy's `reveal_type`, reprs, pickles and pydoc show `strom._stages.model.Stage` (mypy's
+Decided with it:
+
+- Factories (from user functions or none: also `tag_by`, `duplicate`) are apart from combinators (from stages).
+- Join, route, gather and loop stay in `streaming` with the dispatcher they recurse into, because a separate module
+  would import it back. `Stage.__repr__` imports `display` when called, because `display` matches on the kinds.
+- `RunFailed` and `run_failed` are in `_interpreters.failures`, because the runner and `strom.testing` both use them.
+- How a run uses the pools (`offloaders`) is a module of `_interpreters`, so that `_runtime` imports nothing of
+  `_metrics` and knows no runs, and the reference semantics imports nothing of `_runtime`.
+- `_runtime` has a slice per backend, named after its backend class, with its config beside it. A backend is composed of
+  parts, final, and implements the contract directly: none inherits from another.
+- A sub-package's `__init__` holds only a docstring, so that a name has one import path and `_runtime.worker_handles`
+  spans two levels of `_runtime` without a cycle.
+- Privacy is by namespace (the rule: `ARCHITECTURE.md`, Conventions): a module exports a function for what others need
+  from its internals (`check_open`, not the message constant), and tests import internals from their modules.
+- Classes report their module: mypy's `reveal_type`, reprs, pickles and pydoc show `strom._stages.model.Stage` (mypy's
   error messages keep `Stage`).
+- The import order of the packages is tested, like that of the tools (`tests/test_packages.py`). A break injected for
+  each rule was caught by its test.
 
 Precedents for the slices: `concurrent.futures` (`_base` plus a module per executor; `process` holds its whole
 machinery), asyncio (`base_events` plus a module per loop flavour), anyio (`_core` plus a module per backend, 3300 lines
 for asyncio in 4.16.0: why shared code stays out of the slices).
 
-Measured: against the single module, interleaved medians 1.00 and 1.00 (2026-11-03). The backends from parts
-(`bin/ab.py`, `BENCH_SCALE=0.5`, 9 interleaved runs each, 2026-11-09): io, cpu, latency and thread rows within noise (p
-0.12–0.97); `run_overhead_new_pools[process]` 1.009 (p < 0.001), from where a collection falls in a new worker's
-start-up, not from the code: with `gc.freeze()` in the forkserver both take 4.9 ms per first call. Not a reason to
-freeze (2026-11-13, the first call of a fresh `Processes(workers=1)`, 25 lifecycles per run, 9 runs per side
-alternated): `gc.freeze()` first in `serve` and at import of the main module (in the forkserver too) changed nothing;
-pinned to 12 cores every variant took either about 2.3 or about 5.5 ms per first call, the same in a run, from where the
-processes landed; pinned to two cores always 2.0 ms, with `serve` freezing 0.03 ms slower.
+**Measured**
+
+- Against the single module: interleaved medians of 1.00 and 1.00 (2026-11-03).
+- The backends from parts (`bin/ab.py`, `BENCH_SCALE=0.5`, 9 interleaved runs each, 2026-11-09): the io, cpu, latency
+  and thread rows are within noise (p 0.12–0.97). `run_overhead_new_pools[process]` is at 1.009 (p < 0.001), from where
+  a collection falls in a new worker's start-up, not from the code: with `gc.freeze()` in the forkserver both sides take
+  4.9 ms per first call.
+- That is no reason to freeze (2026-11-13; the first call of a fresh `Processes(workers=1)`, 25 lifecycles per run, 9
+  runs per side alternated). `gc.freeze()` first in `serve` and at import of the main module, in the forkserver too,
+  changed nothing. Pinned to 12 cores every variant took either about 2.3 or about 5.5 ms per first call, the same in a
+  run, from where the processes landed. Pinned to two cores it always took 2.0 ms, with `serve` freezing 0.03 ms slower.
 
 **Rejected**
 
@@ -56,7 +61,7 @@ processes landed; pinned to two cores always 2.0 ms, with `serve` freezing 0.03 
   every streaming backend needs the registry)
 - each backend owning its share of the handle core (duplicates the table or makes one backend import another; remote
   backends need it too)
-- names after where code runs or what it uses (`worker`, `executors`) rather than what it holds
+- names after where code runs or what it uses, such as `worker` and `executors` (a module is named after what it holds)
 - `blocks` for the module of `WorkerHandle` (named after no class or concept the code uses)
 - this process's handles in `handle_table` (a second concept beside the class; `iterator_registry` keeps its current
   registry, but there the registry is the concept)

@@ -8,8 +8,8 @@ and structured concurrency. No finding renames a public name or re-proposes a re
 reviewed apart: those not taken are in `docs/decisions/worker-pool.md`. Delete this file once its findings are done or
 rejected (a rejection with its reason goes to `docs/decisions/`).
 
-Suggested order: L1 to L3 with C1 (renames of private names, with `bin/rename.py`), then the texts (C2, C3, L4), then
-the small ones; a session per group.
+Suggested order: L1 to L3 with C1 (renames of private names, with `bin/rename.py`), then the texts (C2, L4), then the
+small ones; a session per group. C3, the sentence of the user guide on what a step is, is done (2026-11-15).
 
 ## L: Terms against the literature
 
@@ -72,24 +72,7 @@ where a leaf's function runs, the event loop or the pool of a resource; the user
 placement". The heading "Resources vs. concurrency" of the user guide, which is about inputs, queues and pools, becomes
 "Queues, pools and concurrency": a resource is `"cpu"` or `"io"` only.
 
-**C3. The user guide never says what a step is.** It builds stages and then speaks of "the `concurrency` of a step",
-event-loop steps, step occurrences and `StepId`; the difference between the two words is in the glossary only. Fix: one
-sentence in the quick start: a step is a stage made by one factory from one function, the unit that has a `concurrency`,
-a row in the statistics and a name in an error's note.
-
 **C4. "Streaming" is the interpreter's word and the io pool's.** A "streaming run" is every run (the glossary's **run**
 is by `stream`), while `streamed` and `StreamingBackend` are about items that come one by one. Fix: "run" for "streaming
 run" where no contrast with the reference is meant, and the glossary's **streaming backend** says what streams: a
 backend for streamed items, which keeps iterators in its workers and honours affinity.
-
-## Checked, no finding
-
-- Arrows: `first`, `second`, `fst`, `snd`, `swap`, `product` (`***`), `route` (`+++`), `left`, `right`, `Left` and
-  `Right` (Either); `tag_by` sends true to `Left` as Hughes' `test` does; `loop` continues on `Left` as `tailRecM`.
-- Structure: chain, join and loop are StreamIt's pipeline, splitjoin and feedbackloop; `route` is the router and
-  `gather` the scatter-gather of the Enterprise Integration Patterns; `where` is LINQ's; stage (SEDA), step
-  (scikit-learn's pipelines, Dataflow), fusion (Hirzel et al.), bag, backpressure, in flight, end of stream.
-- Metrics: busy, idle, blocked (queueing networks with blocking), wait, utilization, wall and CPU time.
-- Pools: pool, worker, task, backend (joblib), resource (the capacity kinds of Ray and Dask), affinity, pinned, offload,
-  shutdown, shared memory, scope (structured concurrency), handle, opener.
-- Tools: mutant, caught and missed (cargo-mutants), snapshot, diagnostic, revision.

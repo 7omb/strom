@@ -1,9 +1,11 @@
 # Metrics check
 
-`recorder=None` is off, checked once per run; ONE task loop for all steps, recording under local `if recording` checks
-(no clock reads, no events when off). Cost of recording with a `StatsRecorder`, one fused step per input (2026-11-06,
-`bin/ab.py -- -k recording`, 9 runs each): 3.6 µs before the events of `InputHandled`, 4.0 µs with them (recorded rows
-+2.2% and +4.7% for `product`, p ≤ 0.003; unrecorded rows unchanged, p 0.45 and 0.97)
+Metrics are off with `recorder=None`, which a run checks once, so that an unrecorded run reads no clock and creates no
+event. One task loop serves all steps and records under local `if recording` checks.
+
+**Measured** (2026-11-06, `bin/ab.py -- -k recording`, 9 runs each): recording with a `StatsRecorder` costs 3.6 µs per
+input of one fused step before the events of `InputHandled` and 4.0 µs with them. With them the recorded rows rose by
+2.2%, and by 4.7% for `product` (p ≤ 0.003); the unrecorded rows did not change (p 0.45 and 0.97).
 
 **Rejected**
 

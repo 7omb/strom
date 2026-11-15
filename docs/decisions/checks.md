@@ -1,13 +1,16 @@
 # Checks
 
-One definition of each check, a make target (2026-11-11); `make check` is lint, type, cov (the tests with `fail_under`
-of coverage, about a second longer than `test`, 2026-11-11) and examples. tox runs the targets (the envs of a Python
-version, and the benchmarks' results, on their own interpreter against the installed package), and so do the git hooks:
-at a commit `make lint` and `make type`, beside the fixers of the changed files; at a push `make check`, so the tests
-run without anyone asking (`pre-commit install` sets up both hooks; direnv does it). The fixers are a target too
-(`make fix`, on every file or on `FILES`): ruff's fixes and its formatter, and mdformat as the commit hook installs it.
-The commit hook, the Claude Code hooks and `bin/rename.py` run that target and the parts of `lint` (`lint-python`, which
-takes `FILES` and ruff's options, and `lint-docs`) instead of the tools
+Each check is defined once, as a make target, because the commands spelled out again per tool drifted. `make check` is
+lint, type, cov (the tests with `fail_under` of coverage, about a second longer than `test`) and examples.
+
+- tox runs the targets: the envs of a Python version, and the benchmarks' results, on their own interpreter against the
+  installed package.
+- The git hooks run them too: at a commit `make lint` and `make type`, beside the fixers of the changed files; at a push
+  `make check`, so the tests run without anyone asking (`pre-commit install` sets up both hooks; direnv does it).
+- The fixers are a target as well (`make fix`, on every file or on `FILES`): ruff's fixes and its formatter, and
+  mdformat as the commit hook installs it.
+- The commit hook, the Claude Code hooks and `bin/rename.py` run that target and the parts of `lint` (`lint-python`,
+  which takes `FILES` and ruff's options, and `lint-docs`) instead of the tools.
 
 **Rejected**
 
@@ -20,7 +23,8 @@ takes `FILES` and ruff's options, and `lint-docs`) instead of the tools
 - nixpkgs-fmt in `fix` (it has one definition, the commit hook, and no hook of Claude Code formats nix files)
 - checks in `flake.nix` as one more, hermetic gate (`nix flake check` with the venv from `uv.lock` via uv2nix,
   2026-11-04 to 2026-11-10): a fourth definition, which the jail could not run (no `nix`), and whose sandbox has neither
-  uv nor network, so that the examples, uv scripts with locks of their own, ran with the interpreter's packages only (a
+  uv nor network, so that the examples, uv scripts with their own locks, ran with the interpreter's packages only (a
   mode `--direct` of `bin/run_examples.py`), skipping those with further dependencies
-- for such checks in nix: Python packages from nixpkgs (a second source of versions, see `tool-sources.md`)
+- for such checks in nix: Python packages from nixpkgs (a second source of versions, see
+  `docs/decisions/tool-sources.md`)
 - for such checks in nix: `uv sync` in the check (no network in the sandbox)

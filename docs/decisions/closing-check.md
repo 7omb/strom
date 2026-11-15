@@ -1,6 +1,8 @@
 # Closing check
 
-`getattr` of `close`/`aclose` (`close_if_closable`; typed `Any | None`, accepted by `--disallow-any-expr`)
+An iterator is closed when it has a `close` or `aclose` attribute, looked up with `getattr` (`close_if_closable`),
+because the other checks either cost per item or leave closable iterators open. `getattr` gives `Any | None`, which
+`--disallow-any-expr` accepts.
 
 **Rejected**
 

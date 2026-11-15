@@ -1,6 +1,7 @@
 """The check of the docs: the paths and names they cite in backticks are tracked, and their lines are short; a
 rules file of Claude Code (`.claude/rules`) has `paths` that match tracked files, and its text stays under
-`NOTE_LIMIT`.
+`NOTE_LIMIT`; the description of a skill or a subagent stays under `DESCRIPTION_WORDS`; a decision has its form
+(`decision_form`).
 
 What counts as a citation and what is skipped: `strom_tools.commands.check_docs`."""
 
@@ -11,6 +12,19 @@ from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from strom_tools.docs_check.decision_form import (
+    DECISIONS,
+    FIRST_SENTENCE_WORDS,
+    NUMBERS_PER_SENTENCE,
+    FormProblem,
+    LongFirstSentence,
+    ManyNumbers,
+    NoFirstSentence,
+    NumberSeries,
+    PlainArrow,
+    UnreasonedRejection,
+    form_problems,
+)
 from strom_tools.docs_check.doc_lines import Context, Line, lines_of
 from strom_tools.docs_check.rule_notes import RULES, body_of, globs_of
 from strom_tools.workspace import git_files
@@ -33,6 +47,12 @@ _SESSION_DOC = "CLAUDE.md"
 SESSION_DOC_LIMIT = 8_000
 """The bytes of `CLAUDE.md`, which every session loads whole: what only some work needs goes elsewhere
 (`.claude/rules/docs.md`)."""
+_DESCRIBED = (".claude/skills", ".claude/agents")
+"""The directories of the skills (a directory each) and of the subagents."""
+_DESCRIPTION = "description:"
+DESCRIPTION_WORDS = 80
+"""The words of a skill's or a subagent's `description`, which every session loads with the list of them: what it
+does, when to use it and what to give it."""
 
 
 @dataclass(frozen=True)
@@ -125,6 +145,15 @@ class LongNote:
 
 
 @dataclass(frozen=True)
+class LongDescription:
+    """A skill or a subagent whose `description` is over `DESCRIPTION_WORDS`."""
+
+    doc: str
+    line: int
+    words: int
+
+
+@dataclass(frozen=True)
 class LongSessionDoc:
     """`CLAUDE.md` over `SESSION_DOC_LIMIT`."""
 
@@ -137,12 +166,46 @@ class LongSessionDoc:
         return 1
 
 
-type Problem = LongLine | MissingCitation | UntrackedCitation | UnscopedNote | DeadGlob | LongNote | LongSessionDoc
+type Problem = (
+    LongLine
+    | MissingCitation
+    | UntrackedCitation
+    | UnscopedNote
+    | DeadGlob
+    | LongNote
+    | LongDescription
+    | LongSessionDoc
+    | FormProblem
+)
 
 
 def rendered(problem: Problem) -> str:
-    """A problem as `FILE:LINE: ...`, with a hint for a citation."""
+    """A problem as `FILE:LINE: ...`, with a hint of what to do about it."""
     match problem:
+        case NoFirstSentence(doc, line):
+            return f"{doc}:{line}: the first paragraph ends no sentence: what was chosen and why, as a sentence"
+        case LongFirstSentence(doc, line, words):
+            return (
+                f"{doc}:{line}: the first sentence has {words} words (at most {FIRST_SENTENCE_WORDS}): what was"
+                " chosen and why in one sentence, the rest after it"
+            )
+        case UnreasonedRejection(doc, line):
+            return (
+                f"{doc}:{line}: a rejected alternative that does not end with its reason: `alternative (why)`, or"
+                " `alternative (when): why`"
+            )
+        case NumberSeries(doc, line, series):
+            return (
+                f"{doc}:{line}: {series}: numbers a reader pairs by position: a table under **Measured** (a fraction"
+                " or versions: in words, or in a code span)"
+            )
+        case ManyNumbers(doc, line, count):
+            return (
+                f"{doc}:{line}: {count} numbers in one sentence (at most {NUMBERS_PER_SENTENCE}): a table under"
+                " **Measured**"
+            )
+        case PlainArrow(doc, line):
+            return f"{doc}:{line}: `->` between numbers: `→` for before and after (a mapping: in a code span)"
         case LongLine(doc, line, length):
             return f"{doc}:{line}: {length} characters (at most {_MAX_LINE})"
         case MissingCitation(doc, line, reference):
@@ -157,6 +220,11 @@ def rendered(problem: Problem) -> str:
             return (
                 f"{doc}:{line}: {length} characters of text (at most {NOTE_LIMIT}): a second topic, a note of its own"
             )
+        case LongDescription(doc, line, words):
+            return (
+                f"{doc}:{line}: a description of {words} words (at most {DESCRIPTION_WORDS}): every session loads"
+                " it; what it does, when to use it and what to give it, the rest in its text"
+            )
         case LongSessionDoc(doc, size):
             return (
                 f"{doc}:1: {size} bytes (at most {SESSION_DOC_LIMIT}): every session loads it; move what only some"
@@ -165,8 +233,9 @@ def rendered(problem: Problem) -> str:
 
 
 def problems(doc: Path, known: Known) -> list[Problem]:
-    """The long lines of a doc, the references it cites that are not tracked and, for a rules file, the problems
-    of its `paths`, in the order of its lines."""
+    """The long lines of a doc, the references it cites that are not tracked, for a rules file the problems of
+    its `paths`, for a skill or a subagent a long description and for a decision the problems of its form, in the
+    order of its lines."""
     root = known.repository.root
     name = shown(known.repository, doc)
     text = doc.read_text(encoding="utf-8")
@@ -175,9 +244,13 @@ def problems(doc: Path, known: Known) -> list[Problem]:
     directory = doc.parent.relative_to(root).as_posix() if doc.is_relative_to(root) else None
     cited = _uncited(name, lines, directory, known)
     notes = _note_problems(name, lines, known) if directory == RULES and doc.suffix == ".md" else []
+    form = form_problems(name, lines) if directory == DECISIONS else []
+    described = any(doc.is_relative_to(root / place) for place in _DESCRIBED)
+    descriptions = _long_descriptions(name, lines) if described else []
     size = len(text.encode())
     session = [LongSessionDoc(name, size)] if doc == root / _SESSION_DOC and size > SESSION_DOC_LIMIT else []
-    return sorted([*session, *notes, *long_lines, *cited], key=_line_of)  # stable: a long line before what it cites
+    # stable: a long line before what it cites, a citation before the form of its passage
+    return sorted([*session, *notes, *descriptions, *long_lines, *cited, *form], key=_line_of)
 
 
 def _line_of(problem: Problem) -> int:
@@ -206,6 +279,17 @@ def _note_problems(
         return dead
     start = next(line.number for line in lines if line.context is not Context.FRONT_MATTER and line.text.strip())
     return [*dead, LongNote(doc, start, len(body))]
+
+
+def _long_descriptions(doc: str, lines: Iterable[Line]) -> list[LongDescription]:
+    """The `description` of the front matter, if it has more than `DESCRIPTION_WORDS` words."""
+    return [
+        LongDescription(doc, line.number, words)
+        for line in lines
+        if line.context is Context.FRONT_MATTER and line.text.startswith(_DESCRIPTION)
+        for words in [len(line.text.removeprefix(_DESCRIPTION).split())]
+        if words > DESCRIPTION_WORDS
+    ]
 
 
 def _long_lines(doc: str, lines: Iterable[Line], *, wide_tables: bool) -> list[LongLine]:

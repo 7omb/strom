@@ -10,11 +10,13 @@ swapped: threads, processes, any `concurrent.futures` executor, or a backend of 
 `strom.backends`).
 
 - No runtime dependencies; Python 3.14, also the free-threaded build (3.14t).
-- Combinators from arrows: `first`, `second`, `product` (`***`), `route` (`+++`), plus `gather` and `loop`.
-- A reference semantics: every stage also has a plain sequential meaning, and the tests check that concurrent runs
-  produce the same items.
+- Combinators for the common shapes: work on one element of a pair (`first`, `second`), run two stages side by side
+  (`product`), branch by a condition (`route`), collect per input (`gather`), repeat until done (`loop`). Where arrows
+  have them, they are the arrow combinators (`***`, `+++`).
+- Every pipeline also has a plain sequential meaning (`strom.testing.evaluate`), and the tests check that concurrent
+  runs produce the same items.
 - Optional metrics (`strom.metrics`: `StatsRecorder`, `diagnose`) that cost nothing when they are off.
-- Outputs form a bag: their order is not preserved.
+- The order of the outputs is not preserved.
 
 ## Installation
 
@@ -40,9 +42,9 @@ def score(record: str) -> Iterator[int]:  # CPU-bound: in the cpu pool
     yield sum(map(ord, record))
 
 
-def show(value: int) -> Iterator[int]:  # blocking IO: in the io pool
+def show(value: int) -> list[int]:  # blocking IO: in the io pool
     print(value)
-    yield value
+    return [value]
 
 
 PIPELINE: Stage[int, int] = async_stage(fetch, concurrency=8) | cpu_stage(score, concurrency=2) | io_stage(show)
@@ -60,10 +62,11 @@ if __name__ == "__main__":
     asyncio.run(main())
 ```
 
-A stage maps each input to zero or more outputs, so a 1:1 function yields its one result. `stream(stage, inputs, pools)`
-runs a stage on each item of `inputs`, a sync or an async iterable, and gives its outputs as they come, as an async
-iterator; what to do with them (a list, a sum, an effect per item) is the consumer's code. The user guide is the
-docstring of the `strom` module (`python -m pydoc strom`); larger examples are in `examples/`, each a uv script
+A stage maps each input to zero or more outputs, so a 1:1 function yields its one result, or returns it in a list.
+`stream(stage, inputs, pools)` runs a stage on each item of `inputs`, a sync or an async iterable, and gives its outputs
+as they come, as an async iterator; what to do with them (a list, a sum, an effect per item) is the consumer's code. The
+example prints the 20 scores in the order they are done and then `total: 14960`. The user guide is the docstring of the
+`strom` module (`python -m pydoc strom`); larger examples are in `examples/`, each a uv script
 (`uv run --script examples/simple.py`).
 
 ## Development

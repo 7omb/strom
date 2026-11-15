@@ -12,7 +12,7 @@ IGNORED = "ARGS=--ignore F401,F811,F821,F822,F841"
 
 
 def edit(path: Path) -> ToolUsed:
-    return ToolUsed(SESSION, "Edit", str(path), None)
+    return ToolUsed(SESSION, "Edit", str(path), None, None)
 
 
 def test_an_edited_python_file_is_fixed_and_linted_without_the_rules_of_a_half_done_change(
@@ -40,7 +40,7 @@ def test_other_files_are_left_as_written(repository: Repository, tmp_path: Path)
     outside.write_text("assert True\n")
     for path in (write(repository, "docs/a.md"), repository.root / "src/deleted.py", outside):
         assert after_edit(repository, edit(path)) is None
-    assert after_edit(repository, ToolUsed(SESSION, "Bash", None, "ls")) is None
+    assert after_edit(repository, ToolUsed(SESSION, "Bash", None, "ls", None)) is None
     assert make_calls(repository) == []
 
 

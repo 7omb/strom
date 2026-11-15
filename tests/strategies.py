@@ -102,7 +102,7 @@ def iterated(stage: P.Stage[int, int], concurrency: int, buffer_size: int) -> P.
 
 MAX_OUTPUTS = 9
 """The most outputs per input of a generated stage (`stages`): two 1:3 leaves in a row or in a `product`. Each
-generated stage carries its bound (`Bounded`); why: `docs/decisions/test-settings.md`."""
+generated stage carries its bound (`Bounded`); why: `docs/decisions/generated-stages.md`."""
 
 
 class Bounded(NamedTuple):
@@ -151,7 +151,7 @@ def loop_of(bounded: Bounded, concurrency: int, buffer_size: int) -> Bounded:
 @st.composite
 def within_bound(draw: st.DrawFn, generated: st.SearchStrategy[Bounded]) -> Bounded:
     bounded = draw(generated)
-    # not `filter`: its retries raise a HypothesisWarning (docs/decisions/test-settings.md)
+    # not `filter`: its retries raise a HypothesisWarning (docs/decisions/generated-stages.md)
     assume(bounded.max_outputs <= MAX_OUTPUTS)
     return bounded
 

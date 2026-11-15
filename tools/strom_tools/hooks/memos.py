@@ -16,7 +16,7 @@ class Memo:
 
 
 def memo(repository: Repository, name: str) -> Memo:
-    """The memo `name` (a path in the state directory, e.g. `rules-loaded/SESSION.txt`)."""
+    """The memo `name` (a path in the state directory, e.g. `rules-loaded/SESSION/main.txt`)."""
     return Memo(state_dir(repository) / name)
 
 
@@ -36,3 +36,12 @@ def remember(memo: Memo, lines: Sequence[str]) -> None:
 
 def forget(memo: Memo) -> None:
     memo.path.unlink(missing_ok=True)
+
+
+def forget_all(repository: Repository, directory: str) -> None:
+    """Forgets every memo in `directory` (a path in the state directory, e.g. `rules-loaded/SESSION`)."""
+    folder = state_dir(repository) / directory
+    if folder.is_dir():
+        for path in folder.iterdir():
+            path.unlink()
+        folder.rmdir()

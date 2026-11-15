@@ -57,8 +57,8 @@ def test_an_event_imports_only_the_modules_of_its_handlers(table: str, expected:
 
 def test_the_results_are_those_of_the_handlers_of_the_event(repository: Repository) -> None:
     with_makefile(repository)
-    assert dispatcher._results(repository, ToolUsed(SESSION, "Read", "/a.py", None)) == []
-    assert dispatcher._results(repository, ToolUsed(SESSION, "Bash", None, "ls")) == [None]
+    assert dispatcher._results(repository, ToolUsed(SESSION, "Read", "/a.py", None, None)) == []
+    assert dispatcher._results(repository, ToolUsed(SESSION, "Bash", None, "ls", None)) == [None]
     assert dispatcher._results(repository, ToolRequested(SESSION, "Bash", "ls")) == [None]
     (refused,) = dispatcher._results(repository, ToolRequested(SESSION, "Bash", "git add -A"))
     assert isinstance(refused, Block)
@@ -68,7 +68,7 @@ def test_the_results_are_those_of_the_handlers_of_the_event(repository: Reposito
     assert dispatcher._results(repository, SessionEnded(SESSION)) == [None, None]
     edited = write(repository, "a.py")
     write(repository, "lint-python.fails", "an error\n")
-    (result,) = dispatcher._results(repository, ToolUsed(SESSION, "Write", str(edited), None))
+    (result,) = dispatcher._results(repository, ToolUsed(SESSION, "Write", str(edited), None, None))
     assert isinstance(result, Block) and len(make_calls(repository)) == 2
 
 
@@ -107,7 +107,7 @@ def test_the_command_answers_with_the_exit_code_and_the_output(
     assert captured.out == "" and captured.err.startswith("ruff check after the edit:\na.py:1:1: E501 Line too long\n")
 
     write(repository, ".claude/rules/all.md", '---\npaths:\n  - "**"\n---\nA rule.\n')
-    event = {"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "cat a.py"}}
+    event = {"hook_event_name": "PostToolUse", "tool_name": "Bash", "tool_input": {"command": "wc -l a.py"}}
     assert run_main(event, monkeypatch, repository) == 0
     captured = capsys.readouterr()
     assert captured.err == "" and json.loads(captured.out) == {

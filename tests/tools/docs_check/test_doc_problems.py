@@ -3,6 +3,7 @@ from tool_helpers import commit, write
 
 from strom_tools.docs_check.doc_problems import (
     _MISSING,
+    DESCRIPTION_WORDS,
     NOTE_LIMIT,
     SESSION_DOC_LIMIT,
     UNTRACKED,
@@ -164,6 +165,19 @@ def test_a_rules_file_stays_under_the_note_limit(documented: Repository) -> None
     ]
 
 
+@pytest.mark.parametrize("name", [".claude/skills/plan/SKILL.md", ".claude/agents/reviewer.md"])
+def test_the_description_of_a_skill_or_a_subagent_stays_under_its_limit_in_words(
+    documented: Repository, name: str
+) -> None:
+    def described(words: int) -> str:
+        return f"---\nname: plan\ndescription: {' '.join(['word'] * words)}\n---\n\n# Plans\n"
+
+    assert check(documented, described(DESCRIPTION_WORDS), name) == []
+    (problem,) = check(documented, described(DESCRIPTION_WORDS + 1), name)
+    assert problem.startswith(f"a description of {DESCRIPTION_WORDS + 1} words (at most {DESCRIPTION_WORDS})")
+    assert check(documented, described(DESCRIPTION_WORDS + 1), "docs/plans/shards.md") == [], "only where it is loaded"
+
+
 def test_claude_md_stays_under_its_limit_in_bytes(documented: Repository) -> None:
     within = "".join(["ü" * 49 + "\n"] * 80)  # 7,920 bytes: two each
     assert len(within.encode()) <= SESSION_DOC_LIMIT
@@ -172,6 +186,28 @@ def test_claude_md_stays_under_its_limit_in_bytes(documented: Repository) -> Non
     (problem,) = check(documented, over, "CLAUDE.md")
     assert problem.startswith(f"8021 bytes (at most {SESSION_DOC_LIMIT}): every session loads it")
     assert check(documented, over, "docs/CLAUDE.md") == [], "only the one at the root"
+
+
+def test_a_decision_is_checked_for_its_form_and_no_other_doc(documented: Repository) -> None:
+    text = "# Topic\n\nShards; no merging\n\n**Rejected**\n\n- merging\n- `bin/old_name.py` (cited on purpose)\n"
+    assert check(documented, text, "docs/decisions/shards.md") == [
+        "the first paragraph ends no sentence: what was chosen and why, as a sentence",
+        "a rejected alternative that does not end with its reason: `alternative (why)`, or `alternative (when): why`",
+    ]
+    assert check(documented, text, "docs/plans/shards.md") == []
+    assert check(documented, text, "docs/decisions/more/shards.md") == [], "only the files of the directory itself"
+
+
+def test_a_problem_of_the_form_says_what_to_do_about_it(documented: Repository) -> None:
+    words = " ".join(["word"] * 20)
+    text = f"# Topic\n\n{words}\n{words} more.\n\nRatios of 1/2, and 1, 2, 3, 4, 5, 6 and 7 -> 8.\n"
+    series = "1/2: numbers a reader pairs by position: a table under **Measured**"
+    assert check(documented, text, "docs/decisions/shards.md") == [
+        "the first sentence has 41 words (at most 40): what was chosen and why in one sentence, the rest after it",
+        f"{series} (a fraction or versions: in words, or in a code span)",
+        "10 numbers in one sentence (at most 6): a table under **Measured**",
+        "`->` between numbers: `→` for before and after (a mapping: in a code span)",
+    ]
 
 
 def test_listed_takes_the_files_it_is_given(documented: Repository) -> None:

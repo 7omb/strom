@@ -5,7 +5,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
-from tool_helpers import write_transcript
+from tool_helpers import assistant_record, tool_result, tool_use, user_record, write_transcript
 
 from strom_tools.sessions.friction import (
     Event,
@@ -24,7 +24,7 @@ from strom_tools.sessions.friction import (
     log_retro,
     since_last_retro,
 )
-from strom_tools.sessions.transcripts import ToolUse, _transcripts_dir
+from strom_tools.sessions.transcripts import ToolUse, _transcripts_dir, subagent_transcript
 from strom_tools.workspace.repository import Repository
 
 PAST, FUTURE = "2020-01-01T10:00:00.000Z", "2999-01-01T10:00:00.000Z"
@@ -33,17 +33,15 @@ NONE = dict.fromkeys(Kind, 0)
 
 
 def call(tool_id: str, name: str, at: str = PAST, **tool_input: object) -> dict[str, object]:
-    block = {"type": "tool_use", "id": tool_id, "name": name, "input": tool_input}
-    return {"type": "assistant", "timestamp": at, "message": {"content": [block]}}
+    return assistant_record(tool_use(tool_id, name, **tool_input), at=at)
 
 
 def result(tool_id: str, text: str, *, is_error: bool = True, at: str = PAST) -> dict[str, object]:
-    block = {"type": "tool_result", "tool_use_id": tool_id, "content": text, "is_error": is_error}
-    return {"type": "user", "timestamp": at, "message": {"content": [block]}}
+    return user_record([tool_result(tool_id, text, is_error=is_error)], at)
 
 
 def said(text: str, at: str = PAST) -> dict[str, object]:
-    return {"type": "user", "timestamp": at, "message": {"content": [{"type": "text", "text": text}]}}
+    return user_record([{"type": "text", "text": text}], at)
 
 
 def hook_block(tool_id: str, error: str, at: str = PAST) -> dict[str, object]:
@@ -60,9 +58,9 @@ INTERRUPT = "[Request interrupted by user for tool use]"
 
 
 def test_a_tool_use_is_named_by_its_tool_and_its_command_or_file() -> None:
-    assert _call_of(ToolUse("t1", "Bash", "make test", None, "")) == "Bash: make test"
-    assert _call_of(ToolUse("t2", "Edit", None, "/a.py", "")) == "Edit: /a.py"
-    assert _call_of(ToolUse("t3", "Skill", None, None, "{'skill': 'plan'}")) == "Skill: {'skill': 'plan'}"
+    assert _call_of(ToolUse("t1", "Bash", "make test", None, None, "")) == "Bash: make test"
+    assert _call_of(ToolUse("t2", "Edit", None, "/a.py", None, "")) == "Edit: /a.py"
+    assert _call_of(ToolUse("t3", "Skill", None, None, None, "{'skill': 'plan'}")) == "Skill: {'skill': 'plan'}"
 
 
 def test_events_are_the_blocks_errors_rejections_interrupts_and_diagnostics(tmp_path: Path) -> None:
@@ -108,6 +106,26 @@ def test_events_since_a_time_leave_out_what_came_before(tmp_path: Path) -> None:
     assert [event.call for event in events(path, since)] == ["Bash: new"]
     assert command_beginnings(path) == Counter({"old": 1, "new": 1})
     assert command_beginnings(path, since) == Counter({"new": 1})
+
+
+def test_the_friction_of_a_session_includes_that_of_its_subagents(tmp_path: Path) -> None:
+    repository = Repository(tmp_path)
+    path = write_transcript(tmp_path / "abcd.jsonl", [call("t1", "Bash", command="make"), result("t1", "failed")])
+    of_subagent = subagent_transcript(path, "a1")
+    of_subagent.parent.mkdir(parents=True)
+    old = [call("t1", "Bash", command="git add ."), hook_block("t1", "the index is the user's")]
+    new = [call("t2", "Bash", at=FUTURE, command="pytest"), result("t2", "Exit code 1", at=FUTURE)]
+    write_transcript(of_subagent, [{**record, "isSidechain": True} for record in [*old, *new]])
+    assert [(event.kind, event.call) for event in events(path)] == [
+        (Kind.TOOL_ERRORS, "Bash: make"),
+        (Kind.HOOK_BLOCKS, "subagent: Bash: git add ."),
+        (Kind.TOOL_ERRORS, "subagent: Bash: pytest"),
+    ]
+    assert [event.call for event in events(path, datetime(2026, 1, 1, tzinfo=UTC))] == ["subagent: Bash: pytest"]
+    log_friction(repository, path)
+    (logged,) = _logged(repository)
+    assert isinstance(logged, SessionLogged)
+    assert logged.counts == {**NONE, Kind.HOOK_BLOCKS: 1, Kind.TOOL_ERRORS: 2}
 
 
 def test_command_beginnings_are_the_first_two_words_of_bash_commands(tmp_path: Path) -> None:

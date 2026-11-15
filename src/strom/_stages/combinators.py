@@ -23,7 +23,8 @@ from strom._stages.model import (
 def first[A, B, X](stage: Stage[A, B]) -> Stage[tuple[A, X], tuple[B, X]]:
     """(a, x) -> (b, x) for each output b of `stage` on a.
 
-    Applied to every step of `stage`, so each step keeps its own concurrency, buffer size and pool."""
+    With a stage that yields 1..n, (2, "x") gives (1, "x") and (2, "x"): x passes through. Applied to every
+    step of `stage`, so each step keeps its own concurrency, buffer size and pool."""
     return lift_first(stage)
 
 
@@ -64,7 +65,8 @@ def route[A, B, C, D](
 ) -> Stage[Left[A] | Right[C], Left[B] | Right[D]]:
     """Left(a) -> Left(b) for each output b of f on a; Right(c) -> Right(d) for each output d of g on c.
 
-    f and g run as two independent streams at the same time; every step inside them keeps its own
+    With f halving and g negating, Left(4) gives Left(2) and Right(5) gives Right(-5): each input goes to one
+    branch. f and g run as two independent streams at the same time; every step inside them keeps its own
     concurrency and buffer size. buffer_size: size of the queues into both branches and of the output
     queue."""
 
@@ -118,8 +120,9 @@ def gather[A, B](
 ) -> Stage[A, list[B]]:
     """a -> [b, ...]: ONE output per input, the list of all outputs of f on a ([] if none).
 
-    The list is in no particular order; it is emitted once f holds no item of the input any more. Where
-    its order counts (a test comparing it, e.g. with `strom.testing`), a following stage sorts it:
+    With an f that yields 1..n, 3 gives [1, 2, 3] and 0 gives []. The list is in no particular order; it
+    is emitted once f holds no item of the input any more. Where its order counts (a test comparing
+    it, e.g. with `strom.testing`), a following stage sorts it:
     `gather(f) | stage(in_order)`, with `def in_order(items: list[B]) -> list[list[B]]: return [sorted(items)]`.
     concurrency: max inputs in flight (taken, their list not yet put), which bounds the lists kept;
     buffer_size: size of the output queue. Every step inside f keeps its own concurrency and buffer

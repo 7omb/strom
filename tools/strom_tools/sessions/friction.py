@@ -10,7 +10,7 @@ that was resumed or that ran the retrospective itself."""
 import json
 from collections import Counter
 from collections.abc import Iterable, Iterator, Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime
 from enum import Enum
 from pathlib import Path
@@ -21,11 +21,13 @@ from strom_tools.sessions.transcripts import (
     DiagnosticsAttached,
     HookBlocked,
     Message,
+    Record,
     Text,
     ToolResult,
     ToolUse,
-    find,
+    chosen,
     records,
+    subagent_transcripts,
     transcripts,
 )
 from strom_tools.workspace.repository import Repository, state_dir
@@ -58,16 +60,25 @@ class Event:
     """Its time in the transcript."""
     kind: Kind
     call: str
-    """The tool call it came from; of an interrupt, the calls it cancelled."""
+    """The tool call it came from, a subagent's marked `subagent:`; of an interrupt, the calls it cancelled."""
     answer: str
     """What the hook, the tool or the user answered."""
 
 
 def events(path: Path, since: datetime | None = None) -> Iterator[Event]:
-    """The friction of a session in the order of its transcript (with `since`: what came after it)."""
+    """The friction of a session: that of its own conversation, then that of each of its subagents, each in the
+    order of its transcript (with `since`: what came after it)."""
+    yield from _events(records(path, since))
+    for subagent in subagent_transcripts(path):
+        for event in _events(records(subagent, since)):
+            yield replace(event, call=f"subagent: {event.call}")
+
+
+def _events(found: Iterable[Record]) -> Iterator[Event]:
+    """The friction in the records of one conversation."""
     calls: dict[str, str] = {}  # by the id of the tool use
     cancelled: list[Event] = []  # rejections that an interrupt may follow: then they are part of it
-    for record in records(path, since):
+    for record in found:
         match record:
             case HookBlocked(at, tool_use_id, hook_name, message):
                 yield Event(at, Kind.HOOK_BLOCKS, calls.get(tool_use_id, hook_name), message)
@@ -103,12 +114,9 @@ def counted(found: Iterable[Event]) -> dict[Kind, int]:
 def covered(repository: Repository, prefixes: Sequence[str], num_recent: int, since: datetime | None) -> list[Path]:
     """The transcripts a report of friction covers: those of the sessions whose ids start with `prefixes`;
     without any, those written after `since` (the last retrospective), or without that the last `num_recent`."""
-    if prefixes:
-        return [find(repository, prefix) for prefix in prefixes]
-    recent = transcripts(repository)
-    if since is None:
-        return recent[-num_recent:]
-    return [path for path in recent if datetime.fromtimestamp(path.stat().st_mtime, UTC) > since]
+    if prefixes or since is None:
+        return chosen(repository, prefixes, num_recent)
+    return [path for path in transcripts(repository) if datetime.fromtimestamp(path.stat().st_mtime, UTC) > since]
 
 
 def _call_of(use: ToolUse) -> str:

@@ -17,8 +17,8 @@ other (`tests/tools/test_structure.py` checks both).
                 group that a timeout kills as a whole)
   the tools     `change_checks` (what validates a change, skill `validate-change`: revisions, line diffs,
                 benchmark comparisons, typing diagnostics, collected test IDs, mutants, the make checks),
-                `example_scripts`, `docs_check`, `renames`, `sessions` (Claude Code's transcripts and the
-                friction in them), `outlines` (what a module defines, line by line)
+                `example_scripts`, `docs_check`, `renames`, `sessions` (Claude Code's transcripts, the
+                friction, the tool and the token usage in them), `outlines` (what a module defines, line by line)
   entry points  `hooks` (the handlers of the Claude Code hooks and their dispatcher) and `commands` (one
                 module per script). Only they read arguments or stdin, print and exit.
 

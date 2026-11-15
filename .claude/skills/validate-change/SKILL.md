@@ -1,13 +1,13 @@
 ---
 name: validate-change
-description: The checks a change to strom needs before it is reported done (CLAUDE.md, Process) - reproduce the problem first, then the suite, interleaved A/B benchmarks, typing diffs of mypy, pyright and ty against HEAD, test-ID diffs for restructured tests, an injected bug for changed tests and a read of the whole diff for structure and simplicity. Use when starting a change to src/, tests/, benchmarks/, examples/, bin/ or tools/, and before reporting it done.
+description: The checks a change to strom needs before it is reported done - reproduce first, then the suite, A/B benchmarks, typing and test-ID diffs, an injected bug for changed tests and a read of the whole diff. Use when starting a change to src/, tests/, benchmarks/, examples/, bin/ or tools/, and before reporting it done.
 allowed-tools: Bash(git status:*), Bash(git diff:*)
 ---
 
 # Validating a change
 
-Reproduce the problem before, validate after. The scripts in `bin/` do the mechanical parts; usage and contract: each
-one's docstring (`uv run --frozen python bin/<script>.py --help`).
+The scripts in `bin/` do the mechanical parts; usage and contract: each one's docstring
+(`uv run --frozen python bin/<script>.py --help`).
 
 Uncommitted changes now:
 
@@ -25,9 +25,9 @@ Uncommitted changes now:
 | Docs only (`*.md`, docstrings) | `make lint` (`bin/check_docs.py`: the paths and names they cite are tracked) |
 
 `REV` below is the revision the change starts from: `HEAD` while it is uncommitted, else e.g. `main~2`; `:index` is the
-state the user staged (compare with it; never stage a version yourself: the index is the user's, `CLAUDE.md`, Process).
-For a change that starts from an uncommitted tree (the second change of a session), `bin/baseline.py` before its first
-edit prints the REV: a commit of the working tree made beside the index (`.claude/rules/baselines.md`).
+state the user staged (compare with it). For a change that starts from an uncommitted tree (the second change of a
+session), `bin/baseline.py` before its first edit prints the REV: a commit of the working tree made beside the index
+(`.claude/rules/baselines.md`).
 
 ## Steps
 
@@ -56,27 +56,17 @@ edit prints the REV: a commit of the working tree made beside the index (`.claud
    - a tool: `--replace tools/strom_tools/<module>.py ...`, with its test module instead of `-k`.
 
    Outcomes: `caught` is the goal; `missed` means the test does not check what it claims; `hung` needs a narrower `-k`;
-   exit code 3 (no verdict) means the tests fail without the bug too; exit code 4, here and for every script in `bin/`,
-   that the script did not run (wrong arguments, a text that does not occur once, an exception). Typical bugs: a
-   concurrency limit ±1, an end of stream or a close left out, a count off by one. A failure flag shared by all runs
-   hangs and says nothing: inject a bug that a narrow `-k` can catch.
+   exit code 3 (no verdict) means the tests fail without the bug too. Typical bugs: a concurrency limit ±1, an end of
+   stream or a close left out, a count off by one. A failure flag shared by all runs hangs and says nothing: inject a
+   bug that a narrow `-k` can catch.
 
 7. **Read the whole diff** once as its reviewer (`git diff REV`, and the new files), before the user has to ask for it:
-   with the criteria Structure, Simplicity and Consistency of the skill `review`, and for what past changes had to be
-   sent back for:
-
-   - a class with several concerns or many private methods; a function that does two things;
-   - a protocol held in flags or `None` where explicit states would say it;
-   - an abstraction, a parameter or a branch with one use; a helper that only forwards;
-   - a fact or a check in two places;
-   - an import that reads as a layer break (`ARCHITECTURE.md`, Packages);
-   - a name off `GLOSSARY.md` or the naming conventions.
-
-   Fix what it finds, then repeat the steps the fixes touch; what needs the user's decision goes into the report. When
-   the user agrees, the subagent `diff-reviewer` (`.claude/agents/diff-reviewer.md`) does this read with a context of
-   its own: give it REV and the purpose of the change; it costs a cold start.
+   with the criteria Structure, Simplicity, Consistency, Tests and Docs of the skill `review`. A change to `src/` is
+   then read by the subagent `reviewer` too (a separate context, which the author's read does not replace), once per
+   change: give it REV, the purpose of the change and the files to read whole. Docs that were only reworded are no scope
+   for it (`bin/check_docs.py --style` and the read above cover them). Fix what both find, then repeat the steps the
+   fixes touch; what needs the user's decision goes into the report.
 
 ## Report
 
-State each step's outcome: done and passed, done with findings (quote them), or skipped and why. Never weaken an
-assertion to make a step pass (`ARCHITECTURE.md`, Conventions).
+State each step's outcome: done and passed, done with findings (quote them), or skipped and why.

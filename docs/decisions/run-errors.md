@@ -1,9 +1,11 @@
 # Run errors
 
-A failed run always raises ONE `ExceptionGroup` ("pipeline run failed") of the errors `failing` recorded, as raised (a
-user's own group stays whole), the run's TaskGroup nesting removed; KeyboardInterrupt/SystemExit unwrapped; strict like
-asyncio's TaskGroup, anyio and Trio >= 0.25 (Trio docs, "Designing for multiple errors"). The block of `stream` follows
-the TaskGroup rules (user guide, Failures); the outputs never end as if complete after a failure
+A failed run always raises one `ExceptionGroup` ("pipeline run failed") of the errors `failing` recorded, even of a
+single one, because a bare error for the common case leaves callers without code for the group. The errors are as raised
+(a user's own group stays whole), with the run's TaskGroup nesting removed; KeyboardInterrupt and SystemExit are
+unwrapped. This is strict like asyncio's TaskGroup, anyio and Trio >= 0.25 (Trio docs, "Designing for multiple errors").
+The block of `stream` follows the TaskGroup rules (user guide, Failures), and the outputs never end as if complete after
+a failure.
 
 **Rejected**
 

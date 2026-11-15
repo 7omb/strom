@@ -1,16 +1,19 @@
 # Stage encoding
 
-Initial encoding: steps hold a `Leaf` (the user's function as data: what it maps to, where it runs); lifted and branch
-steps are `FocusedStep`s (a step plus a `Focus`: `split`/`merge`/`finish`, composed by lifting, applied in the one task
-loop, unlifted steps through `same_focus`; `_focusing` serves the reference semantics); joins hold branches plus a
-`Focus` onto the pair of branch inputs (plain `product`: `same_focus`)
+Stages have an initial encoding: each kind is data that names its parts, and a lifting is data too, a `Focus` that the
+one task loop applies.
+
+- A step holds a `Leaf`: the user's function as data, with what it maps to and where it runs.
+- A lifted or branch step is a `FocusedStep`, a step plus a `Focus` (`split`, `merge`, `finish`). Focuses are composed
+  by lifting; unlifted steps go through `same_focus`, and `_focusing` serves the reference semantics.
+- A join holds its branches plus a `Focus` onto the pair of branch inputs (plain `product`: `same_focus`).
 
 **Rejected**
 
 - a join's own `split`/`merge`/`finish` (a second encoding of the focus: one hand-written rewrite per lifting)
 - final encoding as a record of interpretations (pyright rejects the rank-2 lifting field; new interpreters would edit
   every constructor; opaque)
-- object algebras/tagless final (need HKT)
+- object algebras/tagless final (need higher-kinded types)
 - typed-port graph (types erased inside)
 - join as a tagged linear stream (branches share queues and slots: latency f + g)
 - right-nested chain and a pure `_Arr` node (no benefit without fusion; a fusion pass can flatten the tree itself)

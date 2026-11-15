@@ -57,7 +57,7 @@ xfail_strict = true
 asyncio_mode = "auto"  # pytest-asyncio: every `async def` test and fixture runs on an event loop
 asyncio_default_fixture_loop_scope = "function"
 # Seconds per test (pytest-timeout), far above the slowest test; the thread method, since the signal method can't end
-# a `@given` test (docs/decisions/test-settings.md). A hang writes every thread's stack and ends the process (with
+# a `@given` test (docs/decisions/test-timeouts.md). A hang writes every thread's stack and ends the process (with
 # `-n`, xdist reports the worker as crashed and replaces it).
 timeout = 120
 timeout_method = "thread"

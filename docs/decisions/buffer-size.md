@@ -1,9 +1,9 @@
 # Buffer size
 
-The default `buffer_size` of the steps that wait (`io_stage`, `cpu_stage`, `async_stage`) stays 10, the size of the
+The default `buffer_size` of the steps that wait (`io_stage`, `cpu_stage`, `async_stage`) stays 10, because a larger
+queue gains a few percent at most, also at concurrency 16, less than the spread of the runs. It is the size of the
 step's output queue (`DEFAULT_BUFFER_SIZE` in `strom._stages.model`; event-loop steps size theirs from the consumer's
-concurrency, `docs/decisions/fusion.md`): at concurrency 4 every kind is at its plateau by 10, and at concurrency 16 a
-larger queue gains a few percent at most, less than the spread of the runs.
+concurrency, `docs/decisions/fusion.md`). At concurrency 4 every kind is at its plateau by 10.
 
 Measured 2026-11-13 (Python 3.14.8 with the GIL, pinned to the P-cores, 5 rounds with the sizes interleaved; µs per
 item, medians; cpu on threads). Cheap: the step on 10,000 items, then `stage(neg)`. Jittered: the step and an `io_stage`
@@ -27,7 +27,7 @@ after it, both sleeping 0–2 ms per item in a fixed pattern, 400 items.
 | jittered `cpu_stage` | 153 | 150 | 154 | 151 | 148 |
 | jittered `async_stage` | 108 | 107 | 111 | 107 | 96 |
 
-The minimums scatter between two modes of the thread scheduling (about 2x apart, as in `docs/decisions/worker-pool.md`),
+The minimums scatter between two modes of the thread scheduling (about 2× apart, as in `docs/decisions/worker-pool.md`),
 so the medians are the reading; differences of a few percent need `bin/ab.py`.
 
 **Rejected**
