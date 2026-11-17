@@ -7,7 +7,7 @@ from functools import partial
 from typing import override
 
 import pytest
-from helpers import Pickling, PicklingBackend, boom, inc, many, run_error
+from helpers import InlineBackend, Pickling, PicklingBackend, boom, inc, many, run_error
 
 import strom as P
 from strom.backends import Backend, StreamingBackend, WorkerId
@@ -114,10 +114,12 @@ BACKENDS: dict[str, Callable[[], Backend]] = {
     "processes": P.Processes(workers=1),
     "executor": P.FromExecutor(factory=partial(ThreadPoolExecutor, 2)),
     "pickling": Pickling(workers=2),
+    "inline": InlineBackend,
 }
 STREAMING: dict[str, Callable[[], StreamingBackend]] = {
     "threads": P.Threads(workers=2),
     "pickling": Pickling(workers=2),
+    "inline": InlineBackend,
 }
 
 

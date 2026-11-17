@@ -7,6 +7,7 @@ import inspect
 import math
 import threading
 import time
+from collections import Counter
 from collections.abc import AsyncGenerator, AsyncIterator, Callable, Generator, Iterator
 from contextlib import suppress
 from typing import Literal, cast, override
@@ -25,6 +26,7 @@ from helpers import (
     bag,
     boom,
     collect,
+    collect_inline,
     collect_pickling,
     double,
     explode,
@@ -34,6 +36,7 @@ from helpers import (
     neg,
     outputs_of,
     run_error,
+    run_inline,
     slow_double,
     tagged_items,
     tagged_pairs,
@@ -43,7 +46,7 @@ from helpers import (
 )
 from hypothesis import example, given, settings
 from hypothesis import strategies as st
-from strategies import NONEMPTY_INPUTS, maps, stages
+from strategies import HASH_INPUTS, NONEMPTY_INPUTS, Calls, hash_stages, maps, mix, recorded, stages
 
 import strom as P
 from strom._interpreters.failures import run_errors
@@ -766,6 +769,43 @@ def test_a_stages_endless_generator_is_closed_on_failure(endless_stage: EndlessS
     assert asyncio.run(run_and_check())
 
 
+async def test_an_async_iterator_stopped_between_two_items_is_closed_by_its_step(pools: P.Pools) -> None:
+    """A step that waits to put an item is cancelled while the iterator of its input is suspended between two
+    items: the step's task closes it. Left to the garbage collection of the generator around it, the event loop
+    would close it in a task of its own, outside the run."""
+    num_made = 0
+    closed_by: list[asyncio.Task[object] | None] = []
+
+    class Numbers:
+        def __aiter__(self) -> Numbers:
+            return self
+
+        async def __anext__(self) -> int:
+            nonlocal num_made
+            num_made += 1
+            return num_made
+
+        async def aclose(self) -> None:
+            closed_by.append(asyncio.current_task())
+
+    def numbers(_: None) -> Numbers:
+        return Numbers()
+
+    tasks_of_the_run: set[asyncio.Task[object]] = set()
+    with run_error(Failure):
+        async with P.stream(P.async_stage(numbers), [None], pools) as outputs:
+            await anext(outputs)
+            for _ in range(100):  # steps of the loop: the step fills its queue and waits to put the next item
+                await asyncio.sleep(0)
+            num_made_before = num_made
+            await asyncio.sleep(0)
+            assert num_made == num_made_before
+            tasks_of_the_run = asyncio.all_tasks()
+            raise Failure  # the reader fails: the run is cancelled
+    assert len(closed_by) == 1
+    assert closed_by[0] in tasks_of_the_run
+
+
 def test_cancelling_a_run_stops_it_and_closes_the_generators(pools: P.Pools, endless_stage: EndlessStage) -> None:
     endless, is_closed, num_made = endless_stage
     in_flight = 2 + 10 + 1  # the two calls held, the queue between the two steps, one item waiting to be put
@@ -807,3 +847,129 @@ def test_cancelling_a_run_stops_it_and_closes_the_generators(pools: P.Pools, end
     assert loop.delays == []  # the cancel waited for no time
     assert num_made() == in_flight  # the endless stage was blocked when cancelled and made nothing afterwards
     assert ran_out == []  # the cancel did not wait for the running pool tasks
+
+
+# ---------------------------------------------------------- general properties, on hash pipelines
+# Pipelines whose leaves are drawn part by part and record their calls (`strategies.hash_stages`), on the inline
+# backend, where a failing example fails again when Hypothesis reruns it, and on the thread pools, which alone
+# reach the pinning pool and let the calls of a pool leaf overlap. They state what holds for every pipeline, to
+# find the bugs no dedicated test was written for.
+type HashBackend = Literal["inline", "threads"]
+HASH_BACKENDS: list[HashBackend] = ["inline", "threads"]
+
+
+def collect_hashes(stage: P.Stage[int, int], items: list[int], backend: HashBackend) -> tuple[list[int], Calls]:
+    """The outputs of a run on `backend` and the calls of its leaves; on the thread pools the calls overlap."""
+    with recorded(overlapping=backend == "threads") as calls:
+        return (collect_inline(stage, items) if backend == "inline" else collect(stage, items)), calls
+
+
+@pytest.mark.parametrize("backend", HASH_BACKENDS)
+@given(hash_stages(), HASH_INPUTS)
+def test_hash_pipelines_agree_with_reference_semantics_or_fail_with_the_users_errors(
+    backend: HashBackend, stage: P.Stage[int, int], items: list[int]
+) -> None:
+    try:
+        expected = meaning(stage, items)
+    except ExceptionGroup:  # a failing leaf met an input it fails for: about one example in 20
+        with pytest.raises(ExceptionGroup) as info:
+            collect_hashes(stage, items, backend)
+        assert isinstance(info.value, P.RunFailed)
+        for error in info.value.exceptions:  # only the user's errors, each naming a stage
+            assert isinstance(error, Failure)
+            assert any(note.startswith("in stage") for note in error.__notes__)
+        return
+    outputs, _ = collect_hashes(stage, items, backend)
+    assert bag(outputs) == bag(expected)
+
+
+@pytest.mark.parametrize("backend", HASH_BACKENDS)
+@given(hash_stages(), HASH_INPUTS)
+def test_a_run_calls_each_leaf_with_the_inputs_of_the_reference_semantics(
+    backend: HashBackend, stage: P.Stage[int, int], items: list[int]
+) -> None:
+    """Of a run that succeeds: the reference semantics stops at the first failure, and a failing run has made
+    calls for other inputs and branches by then."""
+    with recorded() as expected:
+        try:
+            meaning(stage, items)
+        except ExceptionGroup:
+            return
+    _, calls = collect_hashes(stage, items, backend)
+    assert calls.counts == expected.counts
+
+
+@pytest.mark.parametrize("backend", HASH_BACKENDS)
+@given(hash_stages(), HASH_INPUTS)
+def test_a_leaf_never_has_more_calls_at_a_time_than_its_concurrency(
+    backend: HashBackend, stage: P.Stage[int, int], items: list[int]
+) -> None:
+    """Also in a failing run. On the inline backend only the calls of async leaves overlap."""
+    with recorded(overlapping=backend == "threads") as calls, suppress(P.RunFailed):
+        if backend == "inline":
+            collect_inline(stage, items)
+        else:
+            collect(stage, items)
+    assert calls.num_above_limit == 0
+
+
+MOST_INPUTS_TAKEN = 2000  # far above what the queues and tasks of a generated pipeline hold
+
+
+@given(hash_stages(), HASH_INPUTS)
+def test_a_pipeline_stops_taking_inputs_while_its_reader_waits(stage: P.Stage[int, int], items: list[int]) -> None:
+    """On inputs without end, a reader that took one output and waits holds the pipeline back: for 200 steps
+    of the loop no input is taken, long before `MOST_INPUTS_TAKEN`. Where an unbounded queue lets the pipeline
+    run ahead, a run to the end of its inputs would hang or fill the memory; this fails the example."""
+    num_taken = 0
+
+    def inputs() -> Iterator[int]:
+        nonlocal num_taken
+        for turn in range(MOST_INPUTS_TAKEN):
+            for item in items:
+                if num_taken == MOST_INPUTS_TAKEN:
+                    return
+                num_taken += 1
+                yield mix(item, turn) >> 32
+
+    async def read_one_and_wait(pools: P.Pools) -> bool:
+        async with asyncio.timeout(helpers.RUN_LIMIT_TIME), P.stream(stage, inputs(), pools) as outputs:
+            async for _ in outputs:
+                break
+            else:
+                return False  # no output for any input
+            num_quiet_steps, num_before = 0, num_taken
+            while num_quiet_steps < 200 and num_taken < MOST_INPUTS_TAKEN:
+                await asyncio.sleep(0)
+                num_quiet_steps = num_quiet_steps + 1 if num_taken == num_before else 0
+                num_before = num_taken
+            return True
+
+    try:
+        waited = run_inline(read_one_and_wait)
+    except P.RunFailed:  # a failing leaf: the run says nothing about its queues
+        return
+    if waited:
+        assert num_taken < MOST_INPUTS_TAKEN
+
+
+@given(hash_stages(), HASH_INPUTS)
+def test_a_run_on_the_inline_backend_repeats(stage: P.Stage[int, int], items: list[int]) -> None:
+    """The same outputs in the same order, or the same errors, and the same calls: what lets Hypothesis shrink a
+    failing example. A failing run cancels its tasks, which `run_inline` puts in a fixed order."""
+
+    def outcome() -> tuple[str, Counter[tuple[int, int]]]:
+        with recorded() as calls:
+            try:
+                return repr(collect_inline(stage, items)), calls.counts
+            except ExceptionGroup as failed:
+                return repr(failed.exceptions), calls.counts
+
+    assert outcome() == outcome()
+
+
+def test_run_inline_restores_the_task_group_after_a_failing_run() -> None:
+    stock = asyncio.TaskGroup
+    with pytest.raises(ExceptionGroup):
+        collect_inline(P.io_stage(explode), [1])
+    assert asyncio.TaskGroup is stock

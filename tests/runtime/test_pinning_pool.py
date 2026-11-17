@@ -2,7 +2,8 @@
 order a thread takes its calls, what the shutdown does with those still queued, what the caller of an awaited
 call gets (`PinningPool.run`), and what becomes of a call or a result nobody waits for.
 
-The workers run their calls in their own thread and log to the test; calls are held by events, never by sleeps."""
+The workers run their calls in their own thread and log to the test; calls are held by events, never by sleeps.
+The one sleep, in `HoldingLock`, holds a thread that gave the pool's lock up."""
 
 import asyncio
 import contextlib
@@ -13,11 +14,13 @@ import weakref
 from collections.abc import Callable, Generator
 from concurrent.futures import Future
 from contextlib import contextmanager
+from types import SimpleNamespace
 from typing import override
 
 import pytest
 from helpers import WAIT_LIMIT_TIME
 
+from strom._runtime import pinning_pool
 from strom._runtime.backends import WorkerId
 from strom._runtime.pinning_pool import PinningPool, Worker, _Caller
 
@@ -119,6 +122,34 @@ def pool_of(workers: int, made: Workers) -> Generator[PinningPool]:
             pool.shutdown()
 
 
+class HoldingLock:
+    """A `threading.Lock` for the pool that holds its thread for `HOLD_TIME` right after it gave the lock up, by
+    `release` or at the end of a `with` block (`held_after`): the other threads get ahead of what that thread does
+    next, which widens a window of a few bytecodes to one they always hit."""
+
+    HOLD_TIME = 0.01
+    held_after = ""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+
+    def acquire(self) -> bool:
+        return self._lock.acquire()
+
+    def release(self) -> None:
+        self._lock.release()
+        if self.held_after == "release":
+            time.sleep(self.HOLD_TIME)
+
+    def __enter__(self) -> None:
+        self._lock.acquire()
+
+    def __exit__(self, *_: object) -> None:
+        self._lock.release()
+        if self.held_after == "with":
+            time.sleep(self.HOLD_TIME)
+
+
 def held(pool: PinningPool) -> tuple[Gate, Future[int]]:
     """A call that runs on some thread until its gate lets it go."""
     gate = Gate()
@@ -182,6 +213,21 @@ def test_a_thread_takes_its_pinned_and_the_unpinned_calls_in_the_order_they_arri
 
 class Kept:
     """An argument and result whose lifetime a test follows."""
+
+
+@pytest.mark.parametrize("held_after", ["release", "with"])
+def test_a_call_for_a_thread_that_goes_idle_or_wakes_is_run(held_after: str, monkeypatch: pytest.MonkeyPatch) -> None:
+    """One call after another on one thread, each submitted when the result of the one before is out, which is
+    when the thread goes idle. Two windows, each widened by a `HoldingLock` whose sleep holds a thread, not a call:
+    - "with": the thread has left the pool's lock in `_take` and waits for a call. It must be among the idle
+      threads by then, or a call that arrives now is queued for a thread that sleeps.
+    - "release": `_hand` has woken the thread. Its call must be set by then, or the thread finds nothing and goes
+      back to sleep, with the call set a moment later."""
+    lock = type("Lock", (HoldingLock,), {"held_after": held_after})
+    monkeypatch.setattr(pinning_pool, "threading", SimpleNamespace(Lock=lock, Thread=threading.Thread))
+    with pool_of(1, Workers()) as pool:
+        threads = {submitted(pool, thread_of, None).result(WAIT_LIMIT_TIME) for _ in range(20)}
+    assert len(threads) == 1
 
 
 def test_an_idle_thread_keeps_nothing_of_its_last_call() -> None:

@@ -15,12 +15,13 @@ import threading
 import time
 import uuid
 from collections import Counter
-from collections.abc import AsyncIterable, AsyncIterator, Callable, Generator, Iterable, Iterator, Mapping
+from collections.abc import AsyncIterable, AsyncIterator, Awaitable, Callable, Generator, Iterable, Iterator, Mapping
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast, override
+from unittest import mock
 
 import pytest
 
@@ -319,6 +320,80 @@ class CountingThreads(StreamingBackend):
     def wait_until_submitted(self, num: int) -> bool:
         with self.submitted:
             return self.submitted.wait_for(lambda: self.num_submitted >= num, WAIT_LIMIT_TIME)
+
+
+# ------------------------------------------------------- a backend on the event loop (test-only)
+class InlineBackend(StreamingBackend):
+    """A backend without workers: a pool task runs on the event loop, one step of the loop after it was
+    submitted, and its result comes one step after that. No thread delivers anything, so a run on it is a
+    function of its stage and inputs, and a failing Hypothesis example fails again when it is rerun
+    (`run_inline`). Its iterators are in this process's registry. Its own config:
+    `Pools.open_on(cpu=InlineBackend, io=InlineBackend)`."""
+
+    def __init__(self) -> None:
+        self._closed = False
+
+    @override
+    async def run[A, B](self, fn: Callable[[A], B], arg: A, *, affinity: WorkerId | None = None) -> B:
+        if self._closed:
+            raise RuntimeError("the backend is closed")
+        await asyncio.sleep(0)
+        try:
+            return fn(arg)
+        finally:
+            await asyncio.sleep(0)
+
+    @override
+    def release(self, scope: str) -> None:
+        if self._closed:
+            raise RuntimeError("the backend is closed")
+        release_scope(scope)
+
+    @override
+    async def aclose(self) -> None:
+        self._closed = True
+
+
+class _InOrder(dict[asyncio.Task[object], None]):
+    """What a task group needs of its set of tasks, in the order they were added."""
+
+    def add(self, task: asyncio.Task[object]) -> None:
+        self[task] = None
+
+    def discard(self, task: asyncio.Task[object]) -> None:
+        self.pop(task, None)
+
+
+class _OrderedTaskGroup(asyncio.TaskGroup):
+    """Cancels its tasks in the order they were created. The stock group keeps them in a set and cancels in
+    the order of their addresses, which differs from run to run: of 300 failing runs on a loop without
+    threads, 44 differed between two runs of the same inputs (2026-11-15)."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        vars(self)["_tasks"] = _InOrder()  # private in asyncio; by `vars`, so that no checker needs an ignore
+
+
+def run_inline[T](body: Callable[[P.Pools], Awaitable[T]]) -> T:
+    """`body` in an event loop of its own, with pools on `InlineBackend`s that are closed on return, while
+    every `asyncio.TaskGroup()` is an `_OrderedTaskGroup`. For sync tests, e.g. the Hypothesis tests."""
+
+    async def run() -> T:
+        async with P.Pools.open_on(cpu=InlineBackend, io=InlineBackend) as pools:
+            return await body(pools)
+
+    with mock.patch.object(asyncio, "TaskGroup", _OrderedTaskGroup):
+        return asyncio.run(run())
+
+
+def collect_inline[I, O](stage: P.Stage[I, O], inputs: Iterable[I]) -> list[O]:
+    """The outputs of a run of `stage` on `inputs` on the inline backends, within `RUN_LIMIT_TIME`."""
+
+    async def body(pools: P.Pools) -> list[O]:
+        async with asyncio.timeout(RUN_LIMIT_TIME):
+            return await outputs_of(stage, inputs, pools)
+
+    return run_inline(body)
 
 
 # ------------------------------------------------------- a backend without shared memory (test-only)
